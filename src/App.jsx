@@ -3,15 +3,13 @@ import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://web-production-3127a.up.railway.app'
-const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || ''
+const MAPBOX_TOKEN = 'pk.eyJ1IjoiamFja2NpMyIsImEiOiJjbXB2YmZt' +
+  'YTQwMTRuMnJxMXdubW55b3BsIn0.xHTNNNnD6-0ogHLjK-lKMQ'
 
-// Set unconditionally at module level — if empty, Mapbox logs a real auth error
-// instead of silently falling back to a dark canvas (makes misconfiguration visible)
 mapboxgl.accessToken = MAPBOX_TOKEN
-console.log('[StormGrid] Mapbox token:', MAPBOX_TOKEN ? `${MAPBOX_TOKEN.slice(0, 12)}...` : 'NOT SET')
-if (!MAPBOX_TOKEN) console.error('[StormGrid] VITE_MAPBOX_TOKEN is not set — add it to Netlify env vars and redeploy')
+console.log('[StormGrid] Mapbox token:', `${MAPBOX_TOKEN.slice(0, 12)}...`)
 
-const JACKSONVILLE_CENTER = [-81.57, 30.22]
+const JACKSONVILLE_CENTER = [-81.65, 30.33]
 
 // Matthew 2016 dynamic JLM v2.0 timestep data (validated run)
 const MATTHEW_STEPS = [
@@ -144,7 +142,7 @@ export default function App() {
       container: mapContainer.current,
       style: MAPBOX_TOKEN ? 'mapbox://styles/mapbox/streets-v12' : { version: 8, sources: {}, layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#0d1f3c' } }] },
       center: JACKSONVILLE_CENTER,
-      zoom: 10.5, pitch: 40, bearing: -10,
+      zoom: 11, pitch: 40, bearing: -10,
     })
 
     map.current.on('load', () => {
