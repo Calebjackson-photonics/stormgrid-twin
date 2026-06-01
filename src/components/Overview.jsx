@@ -27,9 +27,34 @@ export default function Overview() {
   const [adapterOutputs, setAdapterOutputs] = useState([])
 
   useEffect(() => {
-    fetch(`${API}/health`).then(r => r.json()).then(d => { setApiOk(true); setApiVersion(d.version || '') }).catch(() => setApiOk(false))
+    let cancelled = false
+
+    const checkHealth = (attempt = 0) => {
+      if (cancelled) return
+      fetch(`${API}/health`)
+        .then(r => r.json())
+        .then(d => {
+          if (cancelled) return
+          setApiOk(true)
+          setApiVersion(d.version || '')
+        })
+        .catch(() => {
+          if (cancelled) return
+          if (attempt < 2) {
+            setTimeout(() => checkHealth(attempt + 1), 3000)
+          } else {
+            setApiOk(false)
+          }
+        })
+    }
+
+    checkHealth()
+    const pollId = setInterval(() => checkHealth(), 30000)
+
     query('runs', { order: 'created_at', limit: 10 }).then(setRuns)
     query('adapter_outputs', { order: 'created_at', limit: 50 }).then(setAdapterOutputs)
+
+    return () => { cancelled = true; clearInterval(pollId) }
   }, [])
 
   const totalRuns = runs.length
