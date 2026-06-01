@@ -8,6 +8,7 @@ const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || ''
 // Set unconditionally at module level — if empty, Mapbox logs a real auth error
 // instead of silently falling back to a dark canvas (makes misconfiguration visible)
 mapboxgl.accessToken = MAPBOX_TOKEN
+console.log('[StormGrid] Mapbox token:', MAPBOX_TOKEN ? `${MAPBOX_TOKEN.slice(0, 12)}...` : 'NOT SET')
 if (!MAPBOX_TOKEN) console.error('[StormGrid] VITE_MAPBOX_TOKEN is not set — add it to Netlify env vars and redeploy')
 
 const JACKSONVILLE_CENTER = [-81.57, 30.22]
@@ -141,7 +142,7 @@ export default function App() {
     if (map.current) return
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
-      style: MAPBOX_TOKEN ? 'mapbox://styles/mapbox/satellite-streets-v12' : { version: 8, sources: {}, layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#0d1f3c' } }] },
+      style: MAPBOX_TOKEN ? 'mapbox://styles/mapbox/streets-v12' : { version: 8, sources: {}, layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#0d1f3c' } }] },
       center: JACKSONVILLE_CENTER,
       zoom: 10.5, pitch: 40, bearing: -10,
     })
