@@ -5,8 +5,10 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 const API_URL = import.meta.env.VITE_API_URL || 'https://web-production-3127a.up.railway.app'
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || ''
 
-// Must be set at module level before any Map instantiation
-if (MAPBOX_TOKEN) mapboxgl.accessToken = MAPBOX_TOKEN
+// Set unconditionally at module level — if empty, Mapbox logs a real auth error
+// instead of silently falling back to a dark canvas (makes misconfiguration visible)
+mapboxgl.accessToken = MAPBOX_TOKEN
+if (!MAPBOX_TOKEN) console.error('[StormGrid] VITE_MAPBOX_TOKEN is not set — add it to Netlify env vars and redeploy')
 
 const JACKSONVILLE_CENTER = [-81.57, 30.22]
 
@@ -237,8 +239,8 @@ export default function App() {
           <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
 
           {!MAPBOX_TOKEN && (
-            <div style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', background: 'rgba(13,31,60,0.9)', border: '1px solid #06b6d4', color: '#06b6d4', padding: '5px 12px', borderRadius: 5, fontSize: 11, zIndex: 10 }}>
-              Add VITE_MAPBOX_TOKEN to .env for satellite 3D terrain
+            <div style={{ position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', background: 'rgba(239,68,68,0.15)', border: '1px solid #ef4444', color: '#ef4444', padding: '6px 14px', borderRadius: 5, fontSize: 11, fontWeight: 600, zIndex: 10 }}>
+              VITE_MAPBOX_TOKEN not set — add to Netlify env vars and redeploy
             </div>
           )}
 
