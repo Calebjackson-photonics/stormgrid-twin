@@ -5,6 +5,9 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 const API_URL = import.meta.env.VITE_API_URL || 'https://web-production-3127a.up.railway.app'
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || ''
 
+// Must be set at module level before any Map instantiation
+if (MAPBOX_TOKEN) mapboxgl.accessToken = MAPBOX_TOKEN
+
 const JACKSONVILLE_CENTER = [-81.57, 30.22]
 
 // Matthew 2016 dynamic JLM v2.0 timestep data (validated run)
@@ -134,10 +137,9 @@ export default function App() {
 
   useEffect(() => {
     if (map.current) return
-    mapboxgl.accessToken = MAPBOX_TOKEN
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
-      style: MAPBOX_TOKEN ? 'mapbox://styles/mapbox/dark-v11' : { version: 8, sources: {}, layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#0d1f3c' } }] },
+      style: MAPBOX_TOKEN ? 'mapbox://styles/mapbox/satellite-streets-v12' : { version: 8, sources: {}, layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#0d1f3c' } }] },
       center: JACKSONVILLE_CENTER,
       zoom: 10.5, pitch: 40, bearing: -10,
     })
