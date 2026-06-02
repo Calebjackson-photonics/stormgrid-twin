@@ -1,34 +1,36 @@
 import { useState } from 'react'
 import { useIsMobile } from './hooks/useIsMobile'
-import Overview from './components/Overview'
-import RunAnalysis from './components/RunAnalysis'
+import MapDashboard from './components/MapDashboard'
 import DataQuery from './components/DataQuery'
 import AdapterHealth from './components/AdapterHealth'
 import Reports from './components/Reports'
 import Billing from './components/Billing'
 
 const TABS = [
-  { id: 'overview',  label: 'Overview' },
-  { id: 'run',       label: 'Run Analysis' },
-  { id: 'query',     label: 'Data Query' },
-  { id: 'adapters',  label: 'Adapter Health' },
-  { id: 'reports',   label: 'Reports' },
-  { id: 'billing',   label: 'Billing' },
+  { id: 'query',    label: 'Data Query' },
+  { id: 'adapters', label: 'Adapter Health' },
+  { id: 'reports',  label: 'Reports' },
+  { id: 'billing',  label: 'Billing' },
 ]
 
 const C = { bg: '#0a1628', nav: '#0d1f3c', border: '#1e3a5f', accent: '#06b6d4', muted: '#64748b' }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('overview')
+  const [activeTab, setActiveTab] = useState(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const isMobile = useIsMobile()
 
+  const currentLabel = activeTab ? TABS.find(t => t.id === activeTab)?.label : 'Map'
+
   return (
-    <div style={{ minHeight: '100vh', background: C.bg, color: '#e2e8f0', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+    <div style={{ minHeight: '100vh', background: C.bg, color: '#e2e8f0', fontFamily: 'system-ui, -apple-system, sans-serif', display: 'flex', flexDirection: 'column' }}>
       {/* Top nav */}
-      <nav style={{ background: C.nav, borderBottom: `1px solid ${C.border}`, padding: isMobile ? '0 12px' : '0 24px', display: 'flex', alignItems: 'center', gap: 0, position: 'sticky', top: 0, zIndex: 100 }}>
-        {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: isMobile ? 12 : 32, borderRight: `1px solid ${C.border}`, marginRight: isMobile ? 4 : 8, flexShrink: 0 }}>
+      <nav style={{ background: C.nav, borderBottom: `1px solid ${C.border}`, padding: isMobile ? '0 12px' : '0 24px', display: 'flex', alignItems: 'center', gap: 0, position: 'sticky', top: 0, zIndex: 100, flexShrink: 0 }}>
+        {/* Logo — click returns to map */}
+        <div
+          onClick={() => { setActiveTab(null); setMenuOpen(false) }}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: isMobile ? 12 : 32, borderRight: `1px solid ${C.border}`, marginRight: isMobile ? 4 : 8, flexShrink: 0, cursor: 'pointer' }}
+        >
           <div style={{ width: 26, height: 26, borderRadius: 6, background: C.accent + '22', border: `1px solid ${C.accent}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
               <path d="M7 1L13 4V10L7 13L1 10V4L7 1Z" stroke={C.accent} strokeWidth="1.5" fill="none" />
@@ -39,10 +41,9 @@ export default function App() {
         </div>
 
         {isMobile ? (
-          /* Mobile: hamburger + dropdown */
           <>
             <div style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: C.accent, fontSize: 12, fontWeight: 700, paddingLeft: 4 }}>
-              {TABS.find(t => t.id === activeTab)?.label}
+              {currentLabel}
             </div>
             <button
               onClick={() => setMenuOpen(o => !o)}
@@ -53,7 +54,6 @@ export default function App() {
             </button>
           </>
         ) : (
-          /* Desktop: horizontal tab bar */
           <>
             <div style={{ display: 'flex', flex: 1, overflowX: 'auto' }}>
               {TABS.map(tab => (
@@ -83,7 +83,7 @@ export default function App() {
         )}
       </nav>
 
-      {/* Mobile dropdown menu */}
+      {/* Mobile dropdown */}
       {isMobile && menuOpen && (
         <div style={{ background: C.nav, borderBottom: `1px solid ${C.border}`, position: 'sticky', top: 45, zIndex: 99 }}>
           {TABS.map(tab => (
@@ -105,14 +105,18 @@ export default function App() {
       )}
 
       {/* Content */}
-      <main style={{ padding: isMobile ? '16px 12px' : '28px 24px', maxWidth: 1280, margin: '0 auto' }}>
-        {activeTab === 'overview'  && <Overview />}
-        {activeTab === 'run'       && <RunAnalysis />}
-        {activeTab === 'query'     && <DataQuery />}
-        {activeTab === 'adapters'  && <AdapterHealth />}
-        {activeTab === 'reports'   && <Reports />}
-        {activeTab === 'billing'   && <Billing />}
-      </main>
+      {activeTab === null ? (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          <MapDashboard />
+        </div>
+      ) : (
+        <main style={{ padding: isMobile ? '16px 12px' : '28px 24px', maxWidth: 1280, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+          {activeTab === 'query'    && <DataQuery />}
+          {activeTab === 'adapters' && <AdapterHealth />}
+          {activeTab === 'reports'  && <Reports />}
+          {activeTab === 'billing'  && <Billing />}
+        </main>
+      )}
     </div>
   )
 }
