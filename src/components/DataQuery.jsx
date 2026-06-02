@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useIsMobile } from '../hooks/useIsMobile'
 
 const API = 'https://api.getstormgrid.com'
 const C = { card: '#0d1f3c', border: '#1e3a5f', accent: '#06b6d4', muted: '#64748b', ok: '#22c55e', warn: '#f59e0b', err: '#ef4444' }
@@ -72,6 +73,7 @@ export default function DataQuery() {
     }
   }
 
+  const isMobile    = useIsMobile()
   const resultRows  = flattenSources(results?.sources)
   const returnedOk  = results ? Object.values(results.sources || {}).filter(v => !v?.error).length : 0
   const returnedAll = results ? Object.keys(results.sources || {}).length : 0
@@ -83,7 +85,7 @@ export default function DataQuery() {
         <p style={{ color: C.muted, fontSize: 12, margin: 0 }}>Fetch raw scalar data from individual adapters — no full pipeline run required</p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '360px 1fr', gap: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '360px 1fr', gap: 20 }}>
         {/* Query form */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: 20 }}>

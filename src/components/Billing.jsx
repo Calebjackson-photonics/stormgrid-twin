@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useIsMobile } from '../hooks/useIsMobile'
 import { query } from '../lib/supabase'
 
 const C = { card: '#0d1f3c', border: '#1e3a5f', accent: '#06b6d4', muted: '#64748b', ok: '#22c55e', warn: '#f59e0b', err: '#ef4444' }
@@ -7,16 +8,20 @@ const TIERS = [
   {
     id: 'professional',
     name: 'Professional',
-    price: '$300',
+    price: '$1,500',
     period: '/mo',
     color: C.accent,
     features: [
-      'JLM flood index (Λ) per run',
-      'Hurricane Irma & Matthew validation',
+      'Jackson Lambda Model (Λ) per run',
+      'Full 9-adapter live data stack',
+      'USGS 3DEP elevation + gradient',
+      'NOAA MRMS precipitation',
+      'SSURGO soil permeability',
+      'USGS NWIS stream gauges',
+      'FEMA NFHL flood zone risk flag',
       'Storm surge index + regime',
-      'FEMA NFHL risk flag',
+      'SMAP soil moisture + Sentinel SAR',
       '16 Florida locations',
-      'Standard processing',
       'CSV export',
     ],
     cta: 'Start Professional',
@@ -31,12 +36,13 @@ const TIERS = [
     highlight: true,
     features: [
       'Everything in Professional',
-      'All Supabase Storage URLs',
-      'Full FEMA zone GeoJSON',
-      'Bounding box output',
+      'PINN flood depth simulation',
+      'HEC-RAS hydraulic model outputs',
       'Spatial Lambda GeoTIFF heatmap',
-      'CSI / POD / FAR metrics',
+      'Full FEMA zone GeoJSON + bbox',
       'Dynamic JLM v2.0 time-stepping',
+      'All Supabase Storage URLs',
+      'CSI / POD / FAR skill metrics',
       'Priority API access',
       'Dedicated onboarding',
     ],
@@ -51,9 +57,11 @@ const TIERS = [
     color: C.ok,
     features: [
       'Everything in Enterprise',
+      'Live PINN monitoring during active storm events',
+      'Real-time Lambda dashboard feed',
       'Per-event rapid-response pricing',
-      'Priority processing queue',
       'Emergency 24-hr SLA',
+      'Priority processing queue',
       'Dedicated account manager',
       'Custom bbox + location support',
       'White-label output',
@@ -64,23 +72,23 @@ const TIERS = [
 ]
 
 export default function Billing() {
-  const [clients, setClients] = useState([])
-  const [runs, setRuns] = useState([])
-  const [apiKeys, setApiKeys] = useState([])
+  const isMobile = useIsMobile()
+  const [clients, setClients]   = useState([])
+  const [runs, setRuns]         = useState([])
+  const [apiKeys, setApiKeys]   = useState([])
 
   useEffect(() => {
-    query('clients', { order: 'created_at', limit: 10 }).then(setClients)
-    query('runs', { order: 'created_at', limit: 200 }).then(setRuns)
-    query('api_keys', { order: 'created_at', limit: 10 }).then(setApiKeys)
+    query('clients',  { order: 'created_at', limit: 10  }).then(setClients)
+    query('runs',     { order: 'created_at', limit: 200 }).then(setRuns)
+    query('api_keys', { order: 'created_at', limit: 10  }).then(setApiKeys)
   }, [])
 
-  const activeClient = clients[0]
-  const activeTier = activeClient?.tier || null
-  const activeKey = apiKeys.find(k => k.active)
+  const activeClient  = clients[0]
+  const activeTier    = activeClient?.tier || null
+  const activeKey     = apiKeys.find(k => k.active)
   const runsThisMonth = runs.filter(r => {
     if (!r.created_at) return false
-    const d = new Date(r.created_at)
-    const now = new Date()
+    const d = new Date(r.created_at), now = new Date()
     return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
   }).length
 
@@ -91,11 +99,10 @@ export default function Billing() {
         <p style={{ color: C.muted, fontSize: 12, margin: 0 }}>Subscription tiers and API key management</p>
       </div>
 
-      {/* Current plan summary */}
       {activeClient && (
         <div style={{ background: C.card, border: `1px solid ${C.accent}44`, borderRadius: 8, padding: 20, marginBottom: 24 }}>
           <div style={{ color: C.accent, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 12 }}>CURRENT PLAN</div>
-          <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: isMobile ? 16 : 32, flexWrap: 'wrap' }}>
             <div>
               <div style={{ color: C.muted, fontSize: 10 }}>Tier</div>
               <div style={{ color: '#e2e8f0', fontSize: 16, fontWeight: 700, textTransform: 'capitalize', marginTop: 2 }}>{activeClient.tier || '—'}</div>
@@ -117,7 +124,7 @@ export default function Billing() {
       )}
 
       {/* Tier cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20, marginBottom: 32 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20, marginBottom: 32 }}>
         {TIERS.map(tier => {
           const isCurrent = activeTier === tier.id
           return (
@@ -140,7 +147,7 @@ export default function Billing() {
               <div style={{ flex: 1, marginBottom: 20 }}>
                 {tier.features.map(f => (
                   <div key={f} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
-                    <span style={{ color: tier.color, fontSize: 12, marginTop: 1 }}>✓</span>
+                    <span style={{ color: tier.color, fontSize: 12, marginTop: 1, flexShrink: 0 }}>✓</span>
                     <span style={{ color: '#e2e8f0', fontSize: 12 }}>{f}</span>
                   </div>
                 ))}
@@ -160,10 +167,10 @@ export default function Billing() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {[
             { key: 'sg_pro_demo', tier: 'Professional', color: C.accent },
-            { key: 'sg_ent_demo', tier: 'Enterprise', color: '#a78bfa' },
-            { key: 'sg_mun_demo', tier: 'Municipal', color: C.ok },
+            { key: 'sg_ent_demo', tier: 'Enterprise',   color: '#a78bfa' },
+            { key: 'sg_mun_demo', tier: 'Municipal',    color: C.ok },
           ].map(k => (
-            <div key={k.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#0a1628', border: `1px solid ${C.border}`, borderRadius: 6, padding: '10px 16px' }}>
+            <div key={k.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#0a1628', border: `1px solid ${C.border}`, borderRadius: 6, padding: '10px 16px', flexWrap: 'wrap', gap: 8 }}>
               <span style={{ color: k.color, fontFamily: 'monospace', fontSize: 12, fontWeight: 700 }}>{k.key}</span>
               <span style={{ color: C.muted, fontSize: 11 }}>{k.tier} tier</span>
             </div>
