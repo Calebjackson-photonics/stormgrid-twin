@@ -1,6 +1,27 @@
 import { useEffect, useState } from 'react'
 import { query } from '../lib/supabase'
 
+function Sparkline({ runs, width = 220, height = 48 }) {
+  const pts = [...runs].reverse().filter(r => r.lambda_value > 0).slice(0, 30)
+  if (pts.length < 2) return <span style={{ color: '#1e3a5f', fontSize: 11 }}>no data</span>
+  const vals = pts.map(r => r.lambda_value)
+  const min = Math.min(...vals), max = Math.max(...vals) + 0.0001
+  const pad = 4
+  const points = pts.map((r, i) => {
+    const x = pad + (i / (pts.length - 1)) * (width - pad * 2)
+    const y = pad + (1 - (r.lambda_value - min) / (max - min)) * (height - pad * 2)
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  }).join(' ')
+  const last = pts[pts.length - 1]
+  const lx = pad + (width - pad * 2), ly = pad + (1 - (last.lambda_value - min) / (max - min)) * (height - pad * 2)
+  return (
+    <svg width={width} height={height} style={{ display: 'block', overflow: 'visible' }}>
+      <polyline points={points} fill="none" stroke="#06b6d4" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.9" />
+      <circle cx={lx} cy={ly} r={3} fill="#06b6d4" />
+    </svg>
+  )
+}
+
 const C = { card: '#0d1f3c', border: '#1e3a5f', accent: '#06b6d4', muted: '#64748b', ok: '#22c55e', warn: '#f59e0b', err: '#ef4444' }
 
 function exportCsv(rows, filename) {
@@ -56,18 +77,22 @@ export default function Reports() {
         <p style={{ color: C.muted, fontSize: 12, margin: 0 }}>Full run history with deliverable links and export</p>
       </div>
 
-      <div style={{ display: 'flex', gap: 16, marginBottom: 24 }}>
+      <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
         {[
           { label: 'TOTAL RUNS', value: runs.length || '—', color: '#e2e8f0' },
           { label: 'COMPLETE', value: totalComplete || '—', color: C.ok },
           { label: 'FAILED', value: totalFailed || '—', color: totalFailed > 0 ? C.err : C.muted },
           { label: 'AVG LAMBDA', value: avgLambda > 0 ? avgLambda.toFixed(4) : '—', color: C.accent },
         ].map(s => (
-          <div key={s.label} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: '14px 20px', flex: 1 }}>
+          <div key={s.label} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: '14px 20px', flex: 1, minWidth: 100 }}>
             <div style={{ color: C.muted, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 6 }}>{s.label}</div>
             <div style={{ color: s.color, fontSize: 20, fontWeight: 800 }}>{s.value}</div>
           </div>
         ))}
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: '14px 20px', flex: 2, minWidth: 240 }}>
+          <div style={{ color: C.muted, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 8 }}>LAMBDA TREND</div>
+          <Sparkline runs={runs} />
+        </div>
       </div>
 
       <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: 20 }}>

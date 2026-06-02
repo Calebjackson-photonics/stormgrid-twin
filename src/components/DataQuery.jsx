@@ -41,12 +41,12 @@ function exportCsv(rows, filename) {
   a.click()
 }
 
-export default function DataQuery() {
+export default function DataQuery({ apiKey: apiKeyProp = 'sg_ent_demo' }) {
   const [location, setLocation]   = useState('jacksonville')
   const [startDate, setStartDate] = useState('2016-10-06')
   const [endDate, setEndDate]     = useState('2016-10-08')
   const [selected, setSelected]   = useState(new Set(['noaa_mrms', 'usgs_gauge', 'ssurgo']))
-  const [apiKey, setApiKey]       = useState('sg_ent_demo')
+  const [apiKey, setApiKey]       = useState(apiKeyProp)
   const [loading, setLoading]     = useState(false)
   const [results, setResults]     = useState(null)
   const [error, setError]         = useState('')

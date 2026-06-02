@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { query } from '../lib/supabase'
 
+const API = 'https://api.getstormgrid.com'
+
 const C = { card: '#0d1f3c', border: '#1e3a5f', accent: '#06b6d4', muted: '#64748b', ok: '#22c55e', warn: '#f59e0b', err: '#ef4444' }
 
 const TIERS = [
@@ -73,9 +75,33 @@ const TIERS = [
 
 export default function Billing() {
   const isMobile = useIsMobile()
-  const [clients, setClients]   = useState([])
-  const [runs, setRuns]         = useState([])
-  const [apiKeys, setApiKeys]   = useState([])
+  const [clients, setClients]     = useState([])
+  const [runs, setRuns]           = useState([])
+  const [apiKeys, setApiKeys]     = useState([])
+  const [checkoutLoading, setCheckoutLoading] = useState(null) // price_id being loaded
+  const [checkoutError, setCheckoutError]     = useState('')
+
+  async function handleCheckout(priceId) {
+    setCheckoutLoading(priceId); setCheckoutError('')
+    try {
+      const res  = await fetch(`${API}/stripe/create-checkout-session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          price_id:    priceId,
+          success_url: `${window.location.origin}/?checkout=success`,
+          cancel_url:  `${window.location.origin}/?checkout=cancelled`,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setCheckoutError(data.error || 'Checkout unavailable'); return }
+      window.location.href = data.url
+    } catch (e) {
+      setCheckoutError(e.message)
+    } finally {
+      setCheckoutLoading(null)
+    }
+  }
 
   useEffect(() => {
     query('clients',  { order: 'created_at', limit: 10  }).then(setClients)
@@ -123,6 +149,12 @@ export default function Billing() {
         </div>
       )}
 
+      {checkoutError && (
+        <div style={{ background: '#450a0a', border: '1px solid #ef444444', borderRadius: 6, padding: '10px 16px', marginBottom: 20, color: '#ef4444', fontSize: 12 }}>
+          Checkout error: {checkoutError}
+        </div>
+      )}
+
       {/* Tier cards */}
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(280px, 1fr))', gap: 20, marginBottom: 32 }}>
         {TIERS.map(tier => {
@@ -152,8 +184,19 @@ export default function Billing() {
                   </div>
                 ))}
               </div>
-              <button style={{ background: isCurrent ? tier.color + '22' : tier.color, color: isCurrent ? tier.color : '#0a1628', border: `1px solid ${tier.color}`, borderRadius: 4, padding: '10px', fontSize: 12, fontWeight: 700, cursor: 'pointer', width: '100%' }}>
-                {isCurrent ? 'Current Plan' : tier.cta}
+              <button
+                onClick={() => {
+                  if (isCurrent) return
+                  if (tier.cta === 'Contact Sales') {
+                    window.location.href = `mailto:jacksoncaleb70@gmail.com?subject=StormGrid ${tier.name} Inquiry`
+                  } else {
+                    handleCheckout(tier.priceId)
+                  }
+                }}
+                disabled={isCurrent || checkoutLoading === tier.priceId}
+                style={{ background: isCurrent ? tier.color + '22' : checkoutLoading === tier.priceId ? '#1e3a5f' : tier.color, color: isCurrent || checkoutLoading === tier.priceId ? tier.color : '#0a1628', border: `1px solid ${tier.color}`, borderRadius: 4, padding: '10px', fontSize: 12, fontWeight: 700, cursor: isCurrent ? 'default' : 'pointer', width: '100%' }}
+              >
+                {isCurrent ? 'Current Plan' : checkoutLoading === tier.priceId ? 'Redirecting...' : tier.cta}
               </button>
             </div>
           )

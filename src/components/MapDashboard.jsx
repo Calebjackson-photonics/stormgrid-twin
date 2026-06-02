@@ -63,10 +63,11 @@ function buildGrid(lambdaMean) {
   return { type: 'FeatureCollection', features }
 }
 
-export default function MapDashboard() {
+export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo' }) {
   const isMobile       = useIsMobile()
   const mapContainer   = useRef(null)
   const map            = useRef(null)
+  const realLayerRef   = useRef(false)
   const [mapLoaded, setMapLoaded]   = useState(false)
   const [storm, setStorm]           = useState('matthew')
   const [step, setStep]             = useState(11)
@@ -74,7 +75,7 @@ export default function MapDashboard() {
   const [locations, setLocations]   = useState([])
   const [startDate, setStartDate]   = useState('2016-10-06')
   const [endDate, setEndDate]       = useState('2016-10-08')
-  const [apiKey, setApiKey]         = useState('sg_ent_demo')
+  const [apiKey, setApiKey]         = useState(apiKeyProp)
   const [isRunning, setIsRunning]   = useState(false)
   const [runStatus, setRunStatus]   = useState('')
   const [runResult, setRunResult]   = useState(null)
@@ -140,10 +141,34 @@ export default function MapDashboard() {
             const out = await fetch(`${API}/outputs/${data.run_id}`, { headers: { 'X-API-Key': apiKey } })
             const od  = await out.json()
             setRunResult(od)
-            // Update heatmap to live lambda result if available
-            if (od.lambda_irma_2017) {
-              map.current?.getSource('lambda-grid')?.setData(buildGrid(od.lambda_irma_2017))
+            // Update synthetic heatmap with live lambda scalar
+            const lv = od.lambda_value ?? od.lambda_irma_2017
+            if (lv) map.current?.getSource('lambda-grid')?.setData(buildGrid(lv))
+            // Load real flood extent GeoJSON from Supabase if enterprise/municipal
+            if (od.outputs && map.current?.isStyleLoaded()) {
+              const entry = Object.entries(od.outputs).find(([k]) => k.includes('flood_extent') && k.endsWith('.geojson'))
+                         || Object.entries(od.outputs).find(([k]) => k.endsWith('.geojson'))
+              if (entry) {
+                try {
+                  const gj = await fetch(entry[1]).then(r => r.json())
+                  if (realLayerRef.current) {
+                    map.current.getSource('flood-extent-src').setData(gj)
+                  } else {
+                    map.current.addSource('flood-extent-src', { type: 'geojson', data: gj })
+                    map.current.addLayer({ id: 'flood-fill', type: 'fill', source: 'flood-extent-src', paint: { 'fill-color': '#ef4444', 'fill-opacity': 0.45 } })
+                    map.current.addLayer({ id: 'flood-line', type: 'line', source: 'flood-extent-src', paint: { 'line-color': '#ef4444', 'line-width': 1.5, 'line-opacity': 0.9 } })
+                    realLayerRef.current = true
+                  }
+                } catch { /* GeoJSON unavailable — keep synthetic grid */ }
+              }
             }
+          } else {
+            // Fetch error detail from outputs endpoint
+            try {
+              const errRes  = await fetch(`${API}/outputs/${data.run_id}`, { headers: { 'X-API-Key': apiKey } })
+              const errData = await errRes.json()
+              setRunStatus(`failed: ${errData.error || 'pipeline error'}`)
+            } catch { /* keep generic 'failed' status */ }
           }
         }
       }, 4000)
