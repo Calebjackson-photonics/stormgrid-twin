@@ -11,6 +11,7 @@ import Landing from './components/Landing'
 import TermsOfService from './components/TermsOfService'
 
 const TABS = [
+  { id: 'map',      label: 'Map' },
   { id: 'query',    label: 'Data Query' },
   { id: 'adapters', label: 'Adapter Health' },
   { id: 'reports',  label: 'Reports' },
@@ -147,11 +148,14 @@ export default function App() {
         ) : (
           <>
             <div style={{ display: 'flex', flex: 1, overflowX: 'auto' }}>
-              {TABS.map(tab => (
-                <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{ background: 'transparent', border: 'none', borderBottom: `2px solid ${activeTab === tab.id ? C.accent : 'transparent'}`, color: activeTab === tab.id ? C.accent : C.muted, padding: '16px 18px', fontSize: 12, fontWeight: activeTab === tab.id ? 700 : 500, cursor: 'pointer', whiteSpace: 'nowrap', transition: 'color 0.15s, border-color 0.15s', letterSpacing: '0.01em' }}>
-                  {tab.label}
-                </button>
-              ))}
+              {TABS.map(tab => {
+                const isActive = tab.id === 'map' ? activeTab === null : activeTab === tab.id
+                return (
+                  <button key={tab.id} onClick={() => setActiveTab(tab.id === 'map' ? null : tab.id)} style={{ background: 'transparent', border: 'none', borderBottom: `2px solid ${isActive ? C.accent : 'transparent'}`, color: isActive ? C.accent : C.muted, padding: '16px 18px', fontSize: 12, fontWeight: isActive ? 700 : 500, cursor: 'pointer', whiteSpace: 'nowrap', transition: 'color 0.15s, border-color 0.15s', letterSpacing: '0.01em' }}>
+                    {tab.label}
+                  </button>
+                )
+              })}
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingLeft: 16, flexShrink: 0 }}>
@@ -175,11 +179,14 @@ export default function App() {
       {/* Mobile dropdown */}
       {isMobile && menuOpen && (
         <div style={{ background: C.nav, borderBottom: `1px solid ${C.border}`, position: 'sticky', top: 45, zIndex: 99 }}>
-          {TABS.map(tab => (
-            <button key={tab.id} onClick={() => { setActiveTab(tab.id); setMenuOpen(false) }} style={{ display: 'block', width: '100%', background: 'transparent', border: 'none', borderBottom: `1px solid ${C.border}`, color: activeTab === tab.id ? C.accent : '#e2e8f0', padding: '14px 16px', fontSize: 13, fontWeight: activeTab === tab.id ? 700 : 400, cursor: 'pointer', textAlign: 'left' }}>
-              {tab.label}
-            </button>
-          ))}
+          {TABS.map(tab => {
+            const isActive = tab.id === 'map' ? activeTab === null : activeTab === tab.id
+            return (
+              <button key={tab.id} onClick={() => { setActiveTab(tab.id === 'map' ? null : tab.id); setMenuOpen(false) }} style={{ display: 'block', width: '100%', background: 'transparent', border: 'none', borderBottom: `1px solid ${C.border}`, color: isActive ? C.accent : '#e2e8f0', padding: '14px 16px', fontSize: 13, fontWeight: isActive ? 700 : 400, cursor: 'pointer', textAlign: 'left' }}>
+                {tab.label}
+              </button>
+            )
+          })}
           {isLoggedIn && (
             <button onClick={() => { handleLogout(); setMenuOpen(false) }} style={{ display: 'block', width: '100%', background: 'transparent', border: 'none', color: C.muted, padding: '14px 16px', fontSize: 13, cursor: 'pointer', textAlign: 'left' }}>
               Logout
