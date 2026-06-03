@@ -3,6 +3,7 @@ import mapboxgl from '../lib/mapbox'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { useIsMobile } from '../hooks/useIsMobile'
 import LocationSearch from './LocationSearch'
+import { query } from '../lib/supabase'
 
 const API = 'https://api.getstormgrid.com'
 const C   = { bg: '#0a1628', sidebar: '#0d1f3c', border: '#1e3a5f', accent: '#06b6d4', muted: '#64748b', ok: '#22c55e', warn: '#f59e0b', err: '#ef4444' }
@@ -66,9 +67,11 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo' }) {
   const mapContainer   = useRef(null)
   const map            = useRef(null)
   const realLayerRef   = useRef(false)
-  const [mapLoaded, setMapLoaded]   = useState(false)
-  const [storm, setStorm]           = useState('matthew')
-  const [step, setStep]             = useState(11)
+  const [mapLoaded, setMapLoaded]       = useState(false)
+  const [selectedValue, setSelectedValue] = useState('matthew') // preset key or stormgrid_runs run_id
+  const [dbRuns, setDbRuns]             = useState([])
+  const [dbRunsLoaded, setDbRunsLoaded] = useState(false)
+  const [step, setStep]                 = useState(11)
   const [location, setLocation]     = useState('jacksonville')
   const [locationBbox, setLocationBbox] = useState(null)
   const [startDate, setStartDate]   = useState('2016-10-06')
@@ -79,21 +82,40 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo' }) {
   const [runResult, setRunResult]   = useState(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)  // mobile only
 
-  const preset  = STORM_PRESETS[storm]
-  const steps   = preset.steps
-  const cur     = steps[step]
-  const maxCsi  = Math.max(...steps.map(s => s.csi))
-  const soilSat = cur.soilPerm < 0.1 ? { label: 'SATURATED', color: C.err } : cur.soilPerm < 0.3 ? { label: 'WET', color: C.warn } : { label: 'DRY', color: C.ok }
+  const isPreset    = Boolean(STORM_PRESETS[selectedValue])
+  const preset      = STORM_PRESETS[selectedValue]
+  const steps       = preset?.steps || []
+  const cur         = isPreset ? (steps[step] ?? steps[steps.length - 1]) : null
+  const maxCsi      = steps.length ? Math.max(...steps.map(s => s.csi)) : 1
+  const soilSat     = cur ? (cur.soilPerm < 0.1 ? { label: 'SATURATED', color: C.err } : cur.soilPerm < 0.3 ? { label: 'WET', color: C.warn } : { label: 'DRY', color: C.ok }) : null
+  const selectedRun = isPreset ? null : dbRuns.find(r => (r.run_id || r.id) === selectedValue)
 
+  // Fetch completed runs from stormgrid_runs — default to most recent
   useEffect(() => {
+    query('stormgrid_runs', { order: 'created_at', limit: 50 }).then(rows => {
+      const completed = rows.filter(r => r.status === 'complete')
+      setDbRuns(completed)
+      setDbRunsLoaded(true)
+      if (completed.length > 0) {
+        setSelectedValue(completed[0].run_id || completed[0].id)
+      }
+    })
   }, [])
 
-  // Sync date pickers when storm preset changes
+  // Sync controls when selection changes
   useEffect(() => {
-    setStartDate(preset.start)
-    setEndDate(preset.end)
-    setStep(steps.length - 1)
-  }, [storm])
+    if (isPreset && preset) {
+      setStartDate(preset.start)
+      setEndDate(preset.end)
+      setStep(steps.length - 1)
+    } else if (selectedRun) {
+      const sd = selectedRun.start_date || selectedRun.created_at
+      const ed = selectedRun.end_date   || selectedRun.created_at
+      if (sd) setStartDate(sd.slice(0, 10))
+      if (ed) setEndDate(ed.slice(0, 10))
+      if (selectedRun.location) setLocation(selectedRun.location)
+    }
+  }, [selectedValue, dbRunsLoaded])
 
   useEffect(() => {
     if (map.current) return
@@ -114,8 +136,12 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo' }) {
 
   useEffect(() => {
     if (!mapLoaded) return
-    map.current?.getSource('lambda-grid')?.setData(buildGrid(cur.lambdaMean))
-  }, [mapLoaded, step, storm])
+    if (isPreset && cur) {
+      map.current?.getSource('lambda-grid')?.setData(buildGrid(cur.lambdaMean))
+    } else if (selectedRun?.lambda_value) {
+      map.current?.getSource('lambda-grid')?.setData(buildGrid(selectedRun.lambda_value))
+    }
+  }, [mapLoaded, step, selectedValue, dbRuns])
 
   async function handleRun() {
     setIsRunning(true); setRunResult(null); setRunStatus('queued')
@@ -196,16 +222,32 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo' }) {
           />
         </div>
 
-        {/* Storm preset */}
+        {/* Storm / run selector */}
         <div>
           <label style={labelStyle}>STORM EVENT</label>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {Object.entries(STORM_PRESETS).map(([key, p]) => (
-              <button key={key} onClick={() => setStorm(key)} style={{ flex: 1, background: storm === key ? C.accent : 'transparent', color: storm === key ? '#0a1628' : C.accent, border: `1px solid ${C.accent}`, borderRadius: 4, padding: '6px 4px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>
-                {key === 'matthew' ? 'Matthew 16' : 'Irma 17'}
-              </button>
-            ))}
-          </div>
+          <select
+            value={selectedValue}
+            onChange={e => setSelectedValue(e.target.value)}
+            style={inputStyle}
+          >
+            {dbRuns.length > 0 && (
+              <optgroup label="Pipeline Runs">
+                {dbRuns.map(r => {
+                  const rid = r.run_id || r.id
+                  const loc = (r.location || 'Run').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+                  const dt  = r.created_at ? new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''
+                  const λ   = r.lambda_value != null ? ` · Λ ${Number(r.lambda_value).toFixed(4)}` : ''
+                  return <option key={rid} value={rid}>{loc} — {dt}{λ}</option>
+                })}
+              </optgroup>
+            )}
+            <optgroup label="Reference Storms">
+              {Object.entries(STORM_PRESETS).map(([key, p]) => (
+                <option key={key} value={key}>{p.label}</option>
+              ))}
+            </optgroup>
+          </select>
+          {!dbRunsLoaded && <div style={{ color: C.muted, fontSize: 10, marginTop: 4 }}>Loading runs…</div>}
         </div>
 
         {/* Date range */}
@@ -256,24 +298,47 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo' }) {
           </div>
         )}
 
-        {/* Live step metrics */}
-        <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 14 }}>
-          <div style={{ color: C.accent, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 10 }}>TIME STEP — {cur.dt}</div>
-          {[
-            ['CSI',         cur.csi.toFixed(3),          cur.csi > 0.35 ? C.ok : '#e2e8f0'],
-            ['POD',         cur.pod.toFixed(3),          cur.pod > 0.55 ? C.ok : '#e2e8f0'],
-            ['FAR',         cur.far.toFixed(3),          cur.far < 0.55 ? C.ok : C.warn],
-            ['Λ mean',      cur.lambdaMean.toFixed(4),   cur.lambdaMean > 0.15 ? C.warn : '#e2e8f0'],
-            ['Soil',        `${soilSat.label} ${cur.soilPerm.toFixed(3)}`, soilSat.color],
-            ['Stage (ft)',  cur.stage.toFixed(2),        cur.stage > 7 ? C.err : cur.stage > 4 ? C.warn : '#e2e8f0'],
-            ['Precip (mm)', cur.precip.toFixed(1),       '#e2e8f0'],
-          ].map(([label, value, color]) => (
-            <div key={label} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-              <span style={{ color: C.muted, fontSize: 11 }}>{label}</span>
-              <span style={{ fontSize: 11, fontWeight: 600, color }}>{value}</span>
-            </div>
-          ))}
-        </div>
+        {/* Preset time-step metrics */}
+        {cur && (
+          <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 14 }}>
+            <div style={{ color: C.accent, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 10 }}>TIME STEP — {cur.dt}</div>
+            {[
+              ['CSI',         cur.csi.toFixed(3),          cur.csi > 0.35 ? C.ok : '#e2e8f0'],
+              ['POD',         cur.pod.toFixed(3),          cur.pod > 0.55 ? C.ok : '#e2e8f0'],
+              ['FAR',         cur.far.toFixed(3),          cur.far < 0.55 ? C.ok : C.warn],
+              ['Λ mean',      cur.lambdaMean.toFixed(4),   cur.lambdaMean > 0.15 ? C.warn : '#e2e8f0'],
+              ['Soil',        `${soilSat.label} ${cur.soilPerm.toFixed(3)}`, soilSat.color],
+              ['Stage (ft)',  cur.stage.toFixed(2),        cur.stage > 7 ? C.err : cur.stage > 4 ? C.warn : '#e2e8f0'],
+              ['Precip (mm)', cur.precip.toFixed(1),       '#e2e8f0'],
+            ].map(([label, value, color]) => (
+              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                <span style={{ color: C.muted, fontSize: 11 }}>{label}</span>
+                <span style={{ fontSize: 11, fontWeight: 600, color }}>{value}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* DB run metrics */}
+        {selectedRun && (
+          <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 14 }}>
+            <div style={{ color: C.accent, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 10 }}>RUN METRICS</div>
+            {[
+              ['Lambda (Λ)',   selectedRun.lambda_value != null ? Number(selectedRun.lambda_value).toFixed(4) : '—', C.accent],
+              ['Regime',       selectedRun.lambda_value < 1 ? 'RADIATIVE' : 'FLOODING', selectedRun.lambda_value < 1 ? C.ok : C.err],
+              ['CSI',          selectedRun.csi_score != null ? Number(selectedRun.csi_score).toFixed(3) : '—', '#e2e8f0'],
+              ['Surge Index',  selectedRun.surge_index != null ? Number(selectedRun.surge_index).toFixed(3) : '—', '#e2e8f0'],
+              ['Surge Regime', selectedRun.surge_regime || '—', '#e2e8f0'],
+              ['FEMA Risk',    selectedRun.fema_high_risk === true ? 'HIGH' : selectedRun.fema_high_risk === false ? 'LOW' : '—', selectedRun.fema_high_risk ? C.err : C.ok],
+              ['Precip (mm)',  selectedRun.precip_mm != null ? Number(selectedRun.precip_mm).toFixed(1) : '—', '#e2e8f0'],
+            ].map(([label, value, color]) => (
+              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                <span style={{ color: C.muted, fontSize: 11 }}>{label}</span>
+                <span style={{ fontSize: 11, fontWeight: 600, color }}>{value}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div style={{ padding: '12px 20px', borderTop: `1px solid ${C.border}` }}>
@@ -315,15 +380,17 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo' }) {
           )}
         </div>
 
-        {/* Scrubber */}
-        <div style={{ background: C.sidebar, borderTop: `1px solid ${C.border}`, padding: '10px 16px' }}>
-          <input type="range" min={0} max={steps.length - 1} value={step} onChange={e => setStep(Number(e.target.value))} style={{ width: '100%', accentColor: C.accent, cursor: 'pointer', marginBottom: 6 }} />
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 32 }}>
-            {steps.map((s, i) => (
-              <div key={i} onClick={() => setStep(i)} title={`${s.dt} · CSI ${s.csi.toFixed(3)}`} style={{ flex: 1, height: Math.max(3, Math.round((s.csi / maxCsi) * 32)), borderRadius: 2, cursor: 'pointer', background: i === step ? C.accent : i < step ? '#0e7490' : C.border, transition: 'background 0.1s' }} />
-            ))}
+        {/* Scrubber — preset storms only */}
+        {isPreset && steps.length > 0 && (
+          <div style={{ background: C.sidebar, borderTop: `1px solid ${C.border}`, padding: '10px 16px' }}>
+            <input type="range" min={0} max={steps.length - 1} value={step} onChange={e => setStep(Number(e.target.value))} style={{ width: '100%', accentColor: C.accent, cursor: 'pointer', marginBottom: 6 }} />
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 32 }}>
+              {steps.map((s, i) => (
+                <div key={i} onClick={() => setStep(i)} title={`${s.dt} · CSI ${s.csi.toFixed(3)}`} style={{ flex: 1, height: Math.max(3, Math.round((s.csi / maxCsi) * 32)), borderRadius: 2, cursor: 'pointer', background: i === step ? C.accent : i < step ? '#0e7490' : C.border, transition: 'background 0.1s' }} />
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Mobile sidebar overlay */}
