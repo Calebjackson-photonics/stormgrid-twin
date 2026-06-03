@@ -8,6 +8,7 @@ import Reports from './components/Reports'
 import StormComparison from './components/StormComparison'
 import Billing from './components/Billing'
 import Landing from './components/Landing'
+import TermsOfService from './components/TermsOfService'
 
 const TABS = [
   { id: 'query',    label: 'Data Query' },
@@ -97,7 +98,11 @@ export default function App() {
     setActiveTab(null)
   }
 
-  if (isMarketingSite) return <Landing />
+  if (isMarketingSite) {
+    const path = typeof window !== 'undefined' ? window.location.pathname : '/'
+    if (path === '/terms') return <TermsOfService />
+    return <Landing />
+  }
 
   const isLoggedIn  = Boolean(session.key)
   const tierColor   = TIER_COLOR[session.tier] || C.accent

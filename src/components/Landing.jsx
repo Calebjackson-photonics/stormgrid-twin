@@ -200,7 +200,7 @@ export default function Landing() {
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, marginBottom: 8 }}>
           <Logo />
         </div>
-        <div>© {new Date().getFullYear()} Photonic Dynamics Inc. · <a href="mailto:jacksoncaleb70@gmail.com" style={{ color: C.accent, textDecoration: 'none' }}>jacksoncaleb70@gmail.com</a></div>
+        <div>© {new Date().getFullYear()} Photonic Dynamics Inc. · <a href="mailto:jacksoncaleb70@gmail.com" style={{ color: C.accent, textDecoration: 'none' }}>jacksoncaleb70@gmail.com</a> · <a href="/terms" style={{ color: C.accent, textDecoration: 'none' }}>Terms of Service</a></div>
       </footer>
     </div>
   )
