@@ -141,6 +141,8 @@ export default function RunAnalysis() {
       if (MAPBOX_TOKEN) { map.current.addSource('mapbox-dem', { type: 'raster-dem', url: 'mapbox://mapbox.mapbox-terrain-dem-v1', tileSize: 512, maxzoom: 14 }); map.current.setTerrain({ source: 'mapbox-dem', exaggeration: 2.0 }) }
       map.current.addSource('lambda-grid', { type: 'geojson', data: buildGrid(0.01) })
       map.current.addLayer({ id: 'lambda-fill', type: 'fill', source: 'lambda-grid', paint: { 'fill-color': ['rgb', ['get', 'r'], ['get', 'g'], ['get', 'b']], 'fill-opacity': 0.68 } })
+      map.current.addSource('fema-nfhl', { type: 'raster', tiles: ['https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer/export?bbox={bbox-epsg-3857}&bboxSR=3857&layers=show:28&size=256,256&imageSR=3857&transparent=true&format=png&f=image'], tileSize: 256 })
+      map.current.addLayer({ id: 'fema-layer', type: 'raster', source: 'fema-nfhl', paint: { 'raster-opacity': 0.75 }, layout: { visibility: 'none' } })
       setMapLoaded(true)
     })
     return () => { if (map.current) { map.current.remove(); map.current = null } }
@@ -150,6 +152,12 @@ export default function RunAnalysis() {
     if (!mapLoaded) return
     map.current?.getSource('lambda-grid')?.setData(buildGrid(cur.lambdaMean))
   }, [mapLoaded, step, storm])
+
+  useEffect(() => {
+    if (!mapLoaded) return
+    map.current?.setLayoutProperty('lambda-fill', 'visibility', showFema ? 'none' : 'visible')
+    map.current?.setLayoutProperty('fema-layer',  'visibility', showFema ? 'visible' : 'none')
+  }, [mapLoaded, showFema])
 
   async function handleRun() {
     setIsRunning(true); setRunResult(null); setRunStatus('queued')
@@ -183,20 +191,34 @@ export default function RunAnalysis() {
             <option value="irma">Hurricane Irma 2017</option>
           </select>
           <button onClick={() => setShowFema(f => !f)} style={{ background: showFema ? C.accent : 'transparent', color: showFema ? '#0a1628' : C.accent, border: `1px solid ${C.accent}`, borderRadius: 4, padding: '4px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
-            {showFema ? 'FEMA VIEW' : 'JLM HEATMAP'}
+            {showFema ? 'JLM HEATMAP' : 'FEMA ZONES'}
           </button>
           <span style={{ color: C.muted, fontSize: 11 }}>Step {step + 1}/{steps.length} · {cur.dt}</span>
         </div>
         <div style={{ flex: 1, position: 'relative', borderRadius: 8, overflow: 'hidden', border: `1px solid ${C.border}` }}>
           <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
           <div style={{ position: 'absolute', bottom: 48, left: 12, background: 'rgba(10,22,40,0.9)', border: `1px solid ${C.border}`, borderRadius: 6, padding: '8px 12px', fontSize: 10 }}>
-            <div style={{ color: C.accent, fontWeight: 700, marginBottom: 4 }}>JLM Λ</div>
-            {[['Low (< 0.05)', 'rgba(0,200,0,0.7)'], ['Medium (0.05–0.25)', 'rgba(255,200,0,0.7)'], ['High (> 0.25)', 'rgba(255,40,0,0.7)']].map(([l, c]) => (
-              <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-                <div style={{ width: 12, height: 8, background: c, borderRadius: 2 }} />
-                <span style={{ color: '#cbd5e1' }}>{l}</span>
-              </div>
-            ))}
+            {showFema ? (
+              <>
+                <div style={{ color: '#f59e0b', fontWeight: 700, marginBottom: 4 }}>FEMA NFHL</div>
+                {[['SFHA — Zone A / AE', 'rgba(82,155,222,0.85)'], ['Zone X (shaded) — Moderate', 'rgba(162,205,242,0.75)'], ['Zone X — Minimal risk', 'rgba(210,230,250,0.5)']].map(([l, c]) => (
+                  <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                    <div style={{ width: 12, height: 8, background: c, borderRadius: 2 }} />
+                    <span style={{ color: '#cbd5e1' }}>{l}</span>
+                  </div>
+                ))}
+              </>
+            ) : (
+              <>
+                <div style={{ color: C.accent, fontWeight: 700, marginBottom: 4 }}>JLM Λ</div>
+                {[['Low (< 0.05)', 'rgba(0,200,0,0.7)'], ['Medium (0.05–0.25)', 'rgba(255,200,0,0.7)'], ['High (> 0.25)', 'rgba(255,40,0,0.7)']].map(([l, c]) => (
+                  <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                    <div style={{ width: 12, height: 8, background: c, borderRadius: 2 }} />
+                    <span style={{ color: '#cbd5e1' }}>{l}</span>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
         </div>
         <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px 16px', marginTop: 8 }}>
