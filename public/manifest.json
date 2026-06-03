@@ -1,0 +1,48 @@
+{
+  "name": "StormGrid — Automated Flood Intelligence",
+  "short_name": "StormGrid",
+  "description": "Real-time flood risk analysis powered by the Jackson Lambda Model. 12-layer data pipeline covering USGS, NOAA, FEMA, and satellite sources.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a1628",
+  "theme_color": "#06b6d4",
+  "categories": ["utilities", "weather", "productivity"],
+  "lang": "en-US",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Run Analysis",
+      "short_name": "Run",
+      "description": "Launch a new pipeline run",
+      "url": "/"
+    },
+    {
+      "name": "Reports",
+      "short_name": "Reports",
+      "description": "View completed runs and download deliverables",
+      "url": "/#reports"
+    }
+  ]
+}

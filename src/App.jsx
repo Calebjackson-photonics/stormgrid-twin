@@ -1,16 +1,19 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useIsMobile } from './hooks/useIsMobile'
 import Login from './components/Login'
 import MapDashboard from './components/MapDashboard'
 import DataQuery from './components/DataQuery'
 import AdapterHealth from './components/AdapterHealth'
 import Reports from './components/Reports'
+import StormComparison from './components/StormComparison'
 import Billing from './components/Billing'
+import Landing from './components/Landing'
 
 const TABS = [
   { id: 'query',    label: 'Data Query' },
   { id: 'adapters', label: 'Adapter Health' },
   { id: 'reports',  label: 'Reports' },
+  { id: 'compare',  label: 'Storm Comparison' },
   { id: 'billing',  label: 'Billing' },
 ]
 
@@ -25,14 +28,63 @@ function loadSession() {
   }
 }
 
+function InstallBanner({ onInstall, onDismiss }) {
+  return (
+    <div style={{ background: '#0d2235', borderBottom: `1px solid ${C.accent}44`, padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ width: 28, height: 28, borderRadius: 6, background: C.accent + '22', border: `1px solid ${C.accent}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+            <path d="M7 1L13 4V10L7 13L1 10V4L7 1Z" stroke={C.accent} strokeWidth="1.5" fill="none" />
+            <circle cx="7" cy="7" r="2" fill={C.accent} />
+          </svg>
+        </div>
+        <div>
+          <span style={{ color: '#e2e8f0', fontSize: 13, fontWeight: 700 }}>Add StormGrid to your home screen</span>
+          <span style={{ color: C.muted, fontSize: 12, marginLeft: 8 }}>— works offline, instant access</span>
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button onClick={onDismiss} style={{ background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 4, color: C.muted, padding: '5px 12px', fontSize: 12, cursor: 'pointer' }}>
+          Not now
+        </button>
+        <button onClick={onInstall} style={{ background: C.accent, border: 'none', borderRadius: 4, color: '#0a1628', padding: '5px 16px', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>
+          Install
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
-  const [session, setSession]       = useState(loadSession)
-  const [activeTab, setActiveTab]   = useState(null)
-  const [menuOpen, setMenuOpen]     = useState(false)
+  const [session, setSession]           = useState(loadSession)
+  const [activeTab, setActiveTab]       = useState(null)
+  const [menuOpen, setMenuOpen]         = useState(false)
+  const [installPrompt, setInstallPrompt] = useState(null)
+  const [showInstall, setShowInstall]   = useState(false)
   const isMobile = useIsMobile()
 
+  const hostname = typeof window !== 'undefined' ? window.location.hostname : ''
+  const isMarketingSite = hostname === 'getstormgrid.com' || hostname === 'www.getstormgrid.com'
+
+  useEffect(() => {
+    const handler = e => {
+      e.preventDefault()
+      setInstallPrompt(e)
+      setShowInstall(true)
+    }
+    window.addEventListener('beforeinstallprompt', handler)
+    return () => window.removeEventListener('beforeinstallprompt', handler)
+  }, [])
+
+  async function handleInstall() {
+    if (!installPrompt) return
+    installPrompt.prompt()
+    const { outcome } = await installPrompt.userChoice
+    if (outcome === 'accepted') setShowInstall(false)
+    setInstallPrompt(null)
+  }
+
   function handleLogin(key, tier) {
-    // '_billing' is a sentinel — skip auth, go straight to billing tab
     if (key === '_billing') { setSession({ key: '', tier: '' }); setActiveTab('billing'); return }
     setSession({ key, tier })
     setActiveTab(null)
@@ -45,6 +97,8 @@ export default function App() {
     setActiveTab(null)
   }
 
+  if (isMarketingSite) return <Landing />
+
   const isLoggedIn  = Boolean(session.key)
   const tierColor   = TIER_COLOR[session.tier] || C.accent
   const currentLabel = activeTab ? TABS.find(t => t.id === activeTab)?.label : 'Map'
@@ -55,6 +109,11 @@ export default function App() {
 
   return (
     <div style={{ minHeight: '100vh', background: C.bg, color: '#e2e8f0', fontFamily: 'system-ui, -apple-system, sans-serif', display: 'flex', flexDirection: 'column' }}>
+
+      {showInstall && installPrompt && (
+        <InstallBanner onInstall={handleInstall} onDismiss={() => setShowInstall(false)} />
+      )}
+
       {/* Top nav */}
       <nav style={{ background: C.nav, borderBottom: `1px solid ${C.border}`, padding: isMobile ? '0 12px' : '0 24px', display: 'flex', alignItems: 'center', gap: 0, position: 'sticky', top: 0, zIndex: 100, flexShrink: 0 }}>
         {/* Logo */}
@@ -90,7 +149,6 @@ export default function App() {
               ))}
             </div>
 
-            {/* Tier badge + logout */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingLeft: 16, flexShrink: 0 }}>
               {isLoggedIn && session.tier && (
                 <span style={{ background: tierColor + '22', color: tierColor, border: `1px solid ${tierColor}44`, borderRadius: 4, fontSize: 10, fontWeight: 800, padding: '3px 8px', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
@@ -131,10 +189,11 @@ export default function App() {
           <MapDashboard apiKey={session.key} />
         </div>
       ) : (
-        <main style={{ padding: isMobile ? '16px 12px' : '28px 24px', maxWidth: 1280, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+        <main style={{ padding: isMobile ? '16px 12px' : '28px 24px', maxWidth: activeTab === 'compare' ? '100%' : 1280, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
           {activeTab === 'query'    && <DataQuery    apiKey={session.key} />}
           {activeTab === 'adapters' && <AdapterHealth />}
           {activeTab === 'reports'  && <Reports />}
+          {activeTab === 'compare'  && <StormComparison />}
           {activeTab === 'billing'  && <Billing />}
         </main>
       )}
