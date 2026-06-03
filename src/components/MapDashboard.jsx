@@ -62,7 +62,7 @@ function buildGrid(lambdaMean) {
   return { type: 'FeatureCollection', features }
 }
 
-export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo' }) {
+export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNavigateToBilling }) {
   const isMobile       = useIsMobile()
   const mapContainer   = useRef(null)
   const map            = useRef(null)
@@ -80,6 +80,7 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo' }) {
   const [isRunning, setIsRunning]   = useState(false)
   const [runStatus, setRunStatus]   = useState('')
   const [runResult, setRunResult]   = useState(null)
+  const [demoLimitHit, setDemoLimitHit] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)  // mobile only
 
   const isPreset    = Boolean(STORM_PRESETS[selectedValue])
@@ -152,6 +153,9 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo' }) {
         body: JSON.stringify({ location, start_date: startDate, end_date: endDate, ...(locationBbox && { bbox: locationBbox }) }),
       })
       const data = await res.json()
+      if (res.status === 403 && data.code === 'DEMO_LIMIT_REACHED') {
+        setDemoLimitHit(true); setIsRunning(false); return
+      }
       if (!res.ok) { setRunStatus(`Error: ${data.error || res.status}`); setIsRunning(false); return }
       setRunStatus('running')
       const poll = setInterval(async () => {
@@ -349,6 +353,34 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo' }) {
 
   return (
     <div style={{ display: 'flex', height: 'calc(100vh - 52px)', position: 'relative', overflow: 'hidden' }}>
+
+      {/* Demo limit modal */}
+      {demoLimitHit && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(5,14,28,0.88)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#0d1f3c', border: '1px solid #1e3a5f', borderRadius: 12, padding: '36px 40px', maxWidth: 420, width: '90%', textAlign: 'center' }}>
+            <div style={{ color: '#f59e0b', fontSize: 28, marginBottom: 12 }}>⚠</div>
+            <div style={{ color: '#f1f5f9', fontSize: 17, fontWeight: 800, marginBottom: 10 }}>Demo Limit Reached</div>
+            <div style={{ color: '#94a3b8', fontSize: 13, lineHeight: 1.7, marginBottom: 28 }}>
+              You've used all 3 demo runs. Subscribe to unlock unlimited pipeline access, full adapter stack, and GeoTIFF / GeoJSON deliverables.
+            </div>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+              <button
+                onClick={() => { setDemoLimitHit(false); if (onNavigateToBilling) onNavigateToBilling() }}
+                style={{ background: '#06b6d4', color: '#0a1628', border: 'none', borderRadius: 6, padding: '11px 28px', fontSize: 13, fontWeight: 800, cursor: 'pointer', letterSpacing: '0.03em' }}
+              >
+                Subscribe Now →
+              </button>
+              <button
+                onClick={() => setDemoLimitHit(false)}
+                style={{ background: 'transparent', color: '#64748b', border: '1px solid #1e3a5f', borderRadius: 6, padding: '11px 20px', fontSize: 13, cursor: 'pointer' }}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Sidebar — desktop always visible, mobile as overlay */}
       {!isMobile && sidebar}
 

@@ -198,7 +198,7 @@ export default function App() {
       {/* Content */}
       {activeTab === null ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-          <MapDashboard apiKey={session.key} />
+          <MapDashboard apiKey={session.key} onNavigateToBilling={() => setActiveTab('billing')} />
         </div>
       ) : (
         <main style={{ padding: isMobile ? '16px 12px' : '28px 24px', maxWidth: activeTab === 'compare' ? '100%' : 1280, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>

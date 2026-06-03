@@ -246,12 +246,58 @@ export default function Reports() {
     precip_mm: r.precip_mm,
   }))
 
+  const lastCompleted = runs.find(r => r.status === 'complete')
+  const lastRunId     = lastCompleted ? (lastCompleted.run_id || lastCompleted.id) : null
+  const lastDels      = lastRunId ? deliverables.filter(d => d.run_id === lastRunId) : []
+
+  const DL_SPECS = [
+    { key: 'geojson',    label: 'Download GeoJSON',           color: '#22c55e', match: t => t.includes('geojson') },
+    { key: 'geotiff',    label: 'Download GeoTIFF',           color: '#a78bfa', match: t => t.includes('geotiff') || t.includes('tiff') },
+    { key: 'provenance', label: 'Download Provenance Report', color: C.warn,    match: t => t.includes('provenance') },
+  ]
+
   return (
     <div>
       <div style={{ marginBottom: 20 }}>
         <h2 style={{ color: '#e2e8f0', fontSize: 18, fontWeight: 700, margin: '0 0 4px' }}>Reports</h2>
         <p style={{ color: C.muted, fontSize: 12, margin: 0 }}>Full run history from stormgrid_runs — download GeoJSON, GeoTIFF, Provenance</p>
       </div>
+
+      {/* Last run deliverables */}
+      {!loading && lastCompleted && (
+        <div style={{ background: C.card, border: `1px solid ${C.ok}44`, borderRadius: 8, padding: 20, marginBottom: 24 }}>
+          <div style={{ color: C.ok, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 4 }}>LAST COMPLETED RUN — DELIVERABLES</div>
+          <div style={{ color: C.muted, fontSize: 11, marginBottom: 14 }}>
+            {lastCompleted.location?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+            {' · '}
+            <span style={{ fontFamily: 'monospace', fontSize: 10 }}>{lastRunId?.slice(0, 28)}</span>
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {DL_SPECS.map(spec => {
+              const del = lastDels.find(d => spec.match((d.file_type || '').toLowerCase()))
+              return del?.storage_url ? (
+                <a
+                  key={spec.key}
+                  href={del.storage_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ background: spec.color + '1a', color: spec.color, border: `1px solid ${spec.color}44`, borderRadius: 5, padding: '9px 18px', fontSize: 12, fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap', display: 'inline-block' }}
+                >
+                  ↓ {spec.label}
+                </a>
+              ) : (
+                <button
+                  key={spec.key}
+                  disabled
+                  style={{ background: '#0a1628', color: C.muted, border: `1px solid ${C.border}`, borderRadius: 5, padding: '9px 18px', fontSize: 12, fontWeight: 600, cursor: 'not-allowed', whiteSpace: 'nowrap' }}
+                >
+                  Generating… ({spec.label.replace('Download ', '')})
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
