@@ -159,6 +159,12 @@ export default function RunAnalysis() {
     map.current?.setLayoutProperty('fema-layer',  'visibility', showFema ? 'visible' : 'none')
   }, [mapLoaded, showFema])
 
+  useEffect(() => {
+    if (!mapLoaded || !runResult?.lambda_value) return
+    map.current?.getSource('lambda-grid')?.setData(buildGrid(runResult.lambda_value))
+    if (showFema) setShowFema(false)
+  }, [mapLoaded, runResult])
+
   async function handleRun() {
     setIsRunning(true); setRunResult(null); setRunStatus('queued')
     try {
