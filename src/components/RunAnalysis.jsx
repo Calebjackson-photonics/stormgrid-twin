@@ -5,6 +5,22 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 const API = 'https://api.getstormgrid.com'
 const C = { card: '#0d1f3c', border: '#1e3a5f', accent: '#06b6d4', muted: '#64748b', ok: '#22c55e', warn: '#f59e0b', err: '#ef4444' }
 
+const HURRICANES = [
+  { name: 'Hurricane Matthew 2016',  start: '2016-10-06', end: '2016-10-08' },
+  { name: 'Hurricane Irma 2017',     start: '2017-09-10', end: '2017-09-12' },
+  { name: 'Hurricane Harvey 2017',   start: '2017-08-25', end: '2017-08-31' },
+  { name: 'Hurricane Maria 2017',    start: '2017-09-20', end: '2017-09-22' },
+  { name: 'Hurricane Michael 2018',  start: '2018-10-10', end: '2018-10-12' },
+  { name: 'Hurricane Florence 2018', start: '2018-09-14', end: '2018-09-16' },
+  { name: 'Hurricane Dorian 2019',   start: '2019-09-01', end: '2019-09-06' },
+  { name: 'Hurricane Sally 2020',    start: '2020-09-14', end: '2020-09-16' },
+  { name: 'Hurricane Ida 2021',      start: '2021-08-29', end: '2021-08-31' },
+  { name: 'Hurricane Ian 2022',      start: '2022-09-26', end: '2022-09-30' },
+  { name: 'Hurricane Nicole 2022',   start: '2022-11-09', end: '2022-11-11' },
+  { name: 'Hurricane Idalia 2023',   start: '2023-08-29', end: '2023-08-31' },
+  { name: 'Hurricane Debby 2024',    start: '2024-08-04', end: '2024-08-08' },
+]
+
 const MAPBOX_TOKEN = 'pk.eyJ1IjoiamFja2NpMyIsImEiOiJjbXB2YmZt' +
   'YTQwMTRuMnJxMXdubW55b3BsIn0.xHTNNNnD6-0ogHLjK-lKMQ'
 mapboxgl.accessToken = MAPBOX_TOKEN
@@ -72,6 +88,43 @@ export default function RunAnalysis() {
   const [location, setLocation] = useState('jacksonville')
   const [locations, setLocations] = useState([])
 
+  // storm selector for run form
+  const [selectedIdx, setSelectedIdx] = useState(0)
+  const [stormSearch, setStormSearch] = useState('')
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [customName, setCustomName] = useState('')
+  const [startDate, setStartDate] = useState(HURRICANES[0].start)
+  const [endDate, setEndDate] = useState(HURRICANES[0].end)
+  const dropdownRef = useRef(null)
+
+  const isCustom = selectedIdx === -1
+  const filtered = HURRICANES.filter(h => h.name.toLowerCase().includes(stormSearch.toLowerCase()))
+
+  useEffect(() => {
+    function handleClick(e) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
+        setDropdownOpen(false)
+        setStormSearch('')
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  function pickHurricane(idx) {
+    setSelectedIdx(idx)
+    setStartDate(HURRICANES[idx].start)
+    setEndDate(HURRICANES[idx].end)
+    setDropdownOpen(false)
+    setStormSearch('')
+  }
+
+  function pickCustom() {
+    setSelectedIdx(-1)
+    setDropdownOpen(false)
+    setStormSearch('')
+  }
+
   const steps = storm === 'matthew' ? MATTHEW_STEPS : IRMA_STEPS
   const cur = steps[step]
   const maxCsi = Math.max(...steps.map(s => s.csi))
@@ -100,9 +153,8 @@ export default function RunAnalysis() {
 
   async function handleRun() {
     setIsRunning(true); setRunResult(null); setRunStatus('queued')
-    const dates = storm === 'matthew' ? { start: '2016-10-06', end: '2016-10-08' } : { start: '2017-09-07', end: '2017-09-12' }
     try {
-      const res = await fetch(`${API}/run`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey }, body: JSON.stringify({ location, start_date: dates.start, end_date: dates.end }) })
+      const res = await fetch(`${API}/run`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey }, body: JSON.stringify({ location, start_date: startDate, end_date: endDate }) })
       const data = await res.json()
       if (!res.ok) { setRunStatus(`Error: ${data.error || res.status}`); setIsRunning(false); return }
       setRunId(data.run_id); setRunStatus('running')
@@ -182,6 +234,79 @@ export default function RunAnalysis() {
         <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: 16 }}>
           <div style={{ color: C.accent, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 12 }}>RUN NEW ANALYSIS</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+
+            {/* Searchable storm selector */}
+            <div ref={dropdownRef} style={{ position: 'relative' }}>
+              <div style={{ position: 'relative' }}>
+                <input
+                  value={dropdownOpen ? stormSearch : (isCustom ? (customName || 'Custom Storm') : HURRICANES[selectedIdx].name)}
+                  onChange={e => { setStormSearch(e.target.value); setDropdownOpen(true) }}
+                  onFocus={() => setDropdownOpen(true)}
+                  placeholder="Search storms…"
+                  style={{ width: '100%', boxSizing: 'border-box', background: '#1e3a5f', color: '#e2e8f0', border: `1px solid ${dropdownOpen ? C.accent : C.border}`, borderRadius: 4, padding: '6px 28px 6px 8px', fontSize: 11, outline: 'none' }}
+                />
+                <span
+                  onClick={() => { setDropdownOpen(o => !o); setStormSearch('') }}
+                  style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', color: C.muted, fontSize: 9, cursor: 'pointer', userSelect: 'none' }}
+                >
+                  {dropdownOpen ? '▲' : '▼'}
+                </span>
+              </div>
+
+              {dropdownOpen && (
+                <div style={{ position: 'absolute', top: 'calc(100% + 2px)', left: 0, right: 0, background: '#0d1f3c', border: `1px solid ${C.accent}`, borderRadius: 4, zIndex: 300, maxHeight: 220, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.6)' }}>
+                  {filtered.length === 0 && (
+                    <div style={{ padding: '8px 10px', color: C.muted, fontSize: 11 }}>No matches</div>
+                  )}
+                  {filtered.map(h => {
+                    const idx = HURRICANES.indexOf(h)
+                    const active = selectedIdx === idx
+                    return (
+                      <div
+                        key={h.name}
+                        onMouseDown={() => pickHurricane(idx)}
+                        style={{ padding: '8px 10px', cursor: 'pointer', background: active ? C.accent + '18' : 'transparent', borderBottom: `1px solid ${C.border}33` }}
+                      >
+                        <div style={{ color: active ? C.accent : '#e2e8f0', fontSize: 11, fontWeight: active ? 700 : 400 }}>{h.name}</div>
+                        <div style={{ color: C.muted, fontSize: 10, marginTop: 1 }}>{h.start} → {h.end}</div>
+                      </div>
+                    )
+                  })}
+                  <div
+                    onMouseDown={pickCustom}
+                    style={{ padding: '8px 10px', cursor: 'pointer', borderTop: `1px solid ${C.border}`, background: isCustom ? C.accent + '18' : 'transparent' }}
+                  >
+                    <div style={{ color: C.accent, fontSize: 11, fontWeight: 700 }}>+ Custom Storm</div>
+                    <div style={{ color: C.muted, fontSize: 10, marginTop: 1 }}>Enter any storm name and date range</div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Custom storm fields */}
+            {isCustom && (
+              <input
+                value={customName}
+                onChange={e => setCustomName(e.target.value)}
+                placeholder="Storm name (e.g. Hurricane Rosa 2018)"
+                style={{ background: '#1e3a5f', color: '#e2e8f0', border: `1px solid ${C.border}`, borderRadius: 4, padding: '6px 8px', fontSize: 11, outline: 'none' }}
+              />
+            )}
+
+            {/* Date range — editable in custom mode, read-only badge in preset mode */}
+            {isCustom ? (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={{ background: '#1e3a5f', color: '#e2e8f0', border: `1px solid ${C.border}`, borderRadius: 4, padding: '5px 6px', fontSize: 10, outline: 'none' }} />
+                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={{ background: '#1e3a5f', color: '#e2e8f0', border: `1px solid ${C.border}`, borderRadius: 4, padding: '5px 6px', fontSize: 10, outline: 'none' }} />
+              </div>
+            ) : (
+              <div style={{ background: '#0a1628', border: `1px solid ${C.border}`, borderRadius: 4, padding: '5px 8px', fontSize: 10, color: C.muted, display: 'flex', justifyContent: 'space-between' }}>
+                <span>{startDate}</span>
+                <span style={{ color: C.border }}>→</span>
+                <span>{endDate}</span>
+              </div>
+            )}
+
             <select value={location} onChange={e => setLocation(e.target.value)} style={{ background: '#1e3a5f', color: '#e2e8f0', border: `1px solid ${C.border}`, borderRadius: 4, padding: '6px 8px', fontSize: 11 }}>
               {(locations.length ? locations : ['jacksonville', 'miami', 'tampa', 'orlando', 'fort_lauderdale', 'sarasota', 'pensacola']).map(l => (
                 <option key={l} value={l}>{l.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>
