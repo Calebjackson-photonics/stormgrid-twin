@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { useIsMobile } from '../hooks/useIsMobile'
+import LocationSearch from './LocationSearch'
 
 const API = 'https://api.getstormgrid.com'
 const C   = { bg: '#0a1628', sidebar: '#0d1f3c', border: '#1e3a5f', accent: '#06b6d4', muted: '#64748b', ok: '#22c55e', warn: '#f59e0b', err: '#ef4444' }
@@ -72,7 +73,7 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo' }) {
   const [storm, setStorm]           = useState('matthew')
   const [step, setStep]             = useState(11)
   const [location, setLocation]     = useState('jacksonville')
-  const [locations, setLocations]   = useState([])
+  const [locationBbox, setLocationBbox] = useState(null)
   const [startDate, setStartDate]   = useState('2016-10-06')
   const [endDate, setEndDate]       = useState('2016-10-08')
   const [apiKey, setApiKey]         = useState(apiKeyProp)
@@ -88,7 +89,6 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo' }) {
   const soilSat = cur.soilPerm < 0.1 ? { label: 'SATURATED', color: C.err } : cur.soilPerm < 0.3 ? { label: 'WET', color: C.warn } : { label: 'DRY', color: C.ok }
 
   useEffect(() => {
-    fetch(`${API}/locations`).then(r => r.json()).then(d => setLocations(Object.keys(d.locations || {}))).catch(() => {})
   }, [])
 
   // Sync date pickers when storm preset changes
@@ -126,7 +126,7 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo' }) {
       const res = await fetch(`${API}/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
-        body: JSON.stringify({ location, start_date: startDate, end_date: endDate }),
+        body: JSON.stringify({ location, start_date: startDate, end_date: endDate, ...(locationBbox && { bbox: locationBbox }) }),
       })
       const data = await res.json()
       if (!res.ok) { setRunStatus(`Error: ${data.error || res.status}`); setIsRunning(false); return }
@@ -192,11 +192,11 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo' }) {
         {/* Location */}
         <div>
           <label style={labelStyle}>LOCATION</label>
-          <select value={location} onChange={e => setLocation(e.target.value)} style={inputStyle}>
-            {(locations.length ? locations : ['jacksonville', 'miami', 'tampa', 'orlando', 'fort_lauderdale', 'sarasota', 'pensacola', 'gainesville', 'tallahassee', 'daytona_beach', 'fort_myers', 'key_west']).map(l => (
-              <option key={l} value={l}>{l.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>
-            ))}
-          </select>
+          <LocationSearch
+            value={location}
+            onChange={(key, bbox) => { setLocation(key); setLocationBbox(bbox) }}
+            inputStyle={inputStyle}
+          />
         </div>
 
         {/* Storm preset */}

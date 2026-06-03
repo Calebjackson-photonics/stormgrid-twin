@@ -1,10 +1,9 @@
 import { useState } from 'react'
 import { useIsMobile } from '../hooks/useIsMobile'
+import LocationSearch from './LocationSearch'
 
 const API = 'https://api.getstormgrid.com'
 const C = { card: '#0d1f3c', border: '#1e3a5f', accent: '#06b6d4', muted: '#64748b', ok: '#22c55e', warn: '#f59e0b', err: '#ef4444' }
-
-const FL_LOCATIONS = ['jacksonville', 'miami', 'tampa', 'orlando', 'fort_lauderdale', 'sarasota', 'pensacola', 'gainesville', 'tallahassee', 'daytona_beach', 'fort_myers', 'key_west', 'panama_city', 'ocala', 'saint_augustine', 'port_st_lucie']
 
 const SOURCES = [
   { id: 'noaa_mrms',  label: 'NOAA MRMS',          desc: 'Multi-Radar Multi-Sensor precipitation (S3, token-free)' },
@@ -42,7 +41,8 @@ function exportCsv(rows, filename) {
 }
 
 export default function DataQuery({ apiKey: apiKeyProp = 'sg_ent_demo' }) {
-  const [location, setLocation]   = useState('jacksonville')
+  const [location, setLocation]     = useState('jacksonville')
+  const [locationBbox, setLocationBbox] = useState(null)
   const [startDate, setStartDate] = useState('2016-10-06')
   const [endDate, setEndDate]     = useState('2016-10-08')
   const [selected, setSelected]   = useState(new Set(['noaa_mrms', 'usgs_gauge', 'ssurgo']))
@@ -61,7 +61,7 @@ export default function DataQuery({ apiKey: apiKeyProp = 'sg_ent_demo' }) {
       const res = await fetch(`${API}/api/query`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
-        body: JSON.stringify({ location, start_date: startDate, end_date: endDate, sources: [...selected] }),
+        body: JSON.stringify({ location, start_date: startDate, end_date: endDate, sources: [...selected], ...(locationBbox && { bbox: locationBbox }) }),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error || `HTTP ${res.status}`); return }
@@ -92,9 +92,12 @@ export default function DataQuery({ apiKey: apiKeyProp = 'sg_ent_demo' }) {
             <div style={{ color: C.accent, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 16 }}>QUERY PARAMETERS</div>
 
             <label style={{ color: C.muted, fontSize: 11, display: 'block', marginBottom: 4 }}>Location</label>
-            <select value={location} onChange={e => setLocation(e.target.value)} style={{ width: '100%', background: '#1e3a5f', color: '#e2e8f0', border: `1px solid ${C.border}`, borderRadius: 4, padding: '7px 10px', fontSize: 12, marginBottom: 12 }}>
-              {FL_LOCATIONS.map(l => <option key={l} value={l}>{l.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</option>)}
-            </select>
+            <div style={{ marginBottom: 12 }}>
+              <LocationSearch
+                value={location}
+                onChange={(key, bbox) => { setLocation(key); setLocationBbox(bbox) }}
+              />
+            </div>
 
             <label style={{ color: C.muted, fontSize: 11, display: 'block', marginBottom: 4 }}>Start Date</label>
             <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={{ width: '100%', background: '#1e3a5f', color: '#e2e8f0', border: `1px solid ${C.border}`, borderRadius: 4, padding: '7px 10px', fontSize: 12, marginBottom: 12, boxSizing: 'border-box' }} />
