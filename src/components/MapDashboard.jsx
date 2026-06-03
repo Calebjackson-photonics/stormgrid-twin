@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import mapboxgl from 'mapbox-gl'
+import mapboxgl from '../lib/mapbox'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { useIsMobile } from '../hooks/useIsMobile'
 import LocationSearch from './LocationSearch'
@@ -7,9 +7,6 @@ import LocationSearch from './LocationSearch'
 const API = 'https://api.getstormgrid.com'
 const C   = { bg: '#0a1628', sidebar: '#0d1f3c', border: '#1e3a5f', accent: '#06b6d4', muted: '#64748b', ok: '#22c55e', warn: '#f59e0b', err: '#ef4444' }
 
-const MAPBOX_TOKEN = 'pk.eyJ1IjoiamFja2NpMyIsImEiOiJjbXB2YmZt' +
-  'YTQwMTRuMnJxMXdubW55b3BsIn0.xHTNNNnD6-0ogHLjK-lKMQ'
-mapboxgl.accessToken = MAPBOX_TOKEN
 
 const MATTHEW_STEPS = [
   { dt: 'Oct 6  00:00', precip: 0.0,   stage: 1.41, soilPerm: 0.605, csi: 0.178, pod: 0.295, far: 0.721, lambdaMean: 0.0082 },

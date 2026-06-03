@@ -1,14 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import mapboxgl from 'mapbox-gl'
+import mapboxgl from '../lib/mapbox'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { query } from '../lib/supabase'
 import { useIsMobile } from '../hooks/useIsMobile'
 
-// Split token avoids GitHub secret scanning; env var takes precedence when set
-const _TA = 'pk.eyJ1IjoiamFja2NpMyIsImEiOiJjbXB2YmZt'
-const _TB = 'YTQwMTRuMnJxMXdubW15b3BsIn0.xHTNNNnD6-0ogHLjK-lKMQ'
-const TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || (_TA + _TB)
-mapboxgl.accessToken = TOKEN
+const TOKEN = mapboxgl.accessToken
 
 const C = {
   bg: '#0a1628', card: '#0d1f3c', border: '#1e3a5f',
