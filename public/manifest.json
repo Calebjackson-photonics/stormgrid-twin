@@ -1,7 +1,7 @@
 {
   "name": "StormGrid — Automated Flood Intelligence",
   "short_name": "StormGrid",
-  "description": "Real-time flood risk analysis powered by the Jackson Lambda Model. 12-layer data pipeline covering USGS, NOAA, FEMA, and satellite sources.",
+  "description": "Real-time flood risk analysis powered by the Jackson Lambda Model. 12-layer data pipeline covering USGS, NOAA, FEMA, and satellite sources. v2.0.0",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
