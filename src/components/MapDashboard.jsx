@@ -82,6 +82,8 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
   const [runResult, setRunResult]   = useState(null)
   const [demoLimitHit, setDemoLimitHit] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)  // mobile only
+  const [showFema, setShowFema]       = useState(false)
+  const femaLayerRef = useRef(false)
 
   const isPreset    = Boolean(STORM_PRESETS[selectedValue])
   const preset      = STORM_PRESETS[selectedValue]
@@ -200,6 +202,29 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
         }
       }, 4000)
     } catch (e) { setRunStatus(`Error: ${e.message}`); setIsRunning(false) }
+  }
+
+  function handleToggleFema() {
+    if (!mapLoaded || !map.current) return
+    const next = !showFema
+    setShowFema(next)
+    if (next) {
+      if (!femaLayerRef.current) {
+        map.current.addSource('fema-nfhl', {
+          type: 'raster',
+          tiles: ['https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer/tile/{z}/{y}/{x}'],
+          tileSize: 256,
+        })
+        map.current.addLayer({ id: 'fema-raster', type: 'raster', source: 'fema-nfhl', paint: { 'raster-opacity': 0.7 } })
+        femaLayerRef.current = true
+      } else {
+        map.current.setLayoutProperty('fema-raster', 'visibility', 'visible')
+      }
+      map.current.setLayoutProperty('lambda-fill', 'visibility', 'none')
+    } else {
+      map.current.setLayoutProperty('lambda-fill', 'visibility', 'visible')
+      if (femaLayerRef.current) map.current.setLayoutProperty('fema-raster', 'visibility', 'none')
+    }
   }
 
   const inputStyle = { background: '#111e36', color: '#e2e8f0', border: `1px solid ${C.border}`, borderRadius: 4, padding: '7px 10px', fontSize: 12, width: '100%', boxSizing: 'border-box' }
@@ -386,19 +411,54 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
 
       {/* Map + scrubber */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, position: 'relative' }}>
+
+        {/* Layer toggle — always visible, disabled until map loads */}
+        <div style={{ background: C.sidebar, borderBottom: `1px solid ${C.border}`, padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <button
+            onClick={handleToggleFema}
+            disabled={!mapLoaded}
+            style={{
+              background: showFema ? C.accent : 'transparent',
+              color: showFema ? '#0a1628' : (mapLoaded ? C.accent : C.muted),
+              border: `1px solid ${mapLoaded ? C.accent : C.border}`,
+              borderRadius: 4, padding: '5px 14px', fontSize: 11, fontWeight: 700,
+              cursor: mapLoaded ? 'pointer' : 'not-allowed',
+              letterSpacing: '0.05em', opacity: mapLoaded ? 1 : 0.45,
+              transition: 'all 0.15s',
+            }}
+          >
+            {showFema ? 'JLM HEATMAP' : 'FEMA ZONES'}
+          </button>
+          {!mapLoaded && <span style={{ color: C.muted, fontSize: 10 }}>Loading map…</span>}
+        </div>
+
         {/* Map */}
         <div style={{ flex: 1, position: 'relative' }}>
           <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
 
-          {/* Lambda legend */}
+          {/* Legend — swaps with active layer */}
           <div style={{ position: 'absolute', bottom: 60, left: 12, background: 'rgba(10,22,40,0.92)', border: `1px solid ${C.border}`, borderRadius: 6, padding: '8px 12px', fontSize: 10 }}>
-            <div style={{ color: C.accent, fontWeight: 700, marginBottom: 4 }}>JLM Λ</div>
-            {[['< 0.05 — Low', 'rgba(0,200,0,0.7)'], ['0.05–0.25 — Medium', 'rgba(255,200,0,0.7)'], ['> 0.25 — High', 'rgba(255,40,0,0.7)']].map(([l, c]) => (
-              <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-                <div style={{ width: 12, height: 8, background: c, borderRadius: 2, flexShrink: 0 }} />
-                <span style={{ color: '#cbd5e1' }}>{l}</span>
-              </div>
-            ))}
+            {showFema ? (
+              <>
+                <div style={{ color: C.accent, fontWeight: 700, marginBottom: 4 }}>FEMA NFHL</div>
+                {[['High Risk (SFHA)', '#5b8dd9'], ['Moderate Risk', '#a3c4f3'], ['Minimal Risk', '#d0e4f7']].map(([l, c]) => (
+                  <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                    <div style={{ width: 12, height: 8, background: c, borderRadius: 2, flexShrink: 0 }} />
+                    <span style={{ color: '#cbd5e1' }}>{l}</span>
+                  </div>
+                ))}
+              </>
+            ) : (
+              <>
+                <div style={{ color: C.accent, fontWeight: 700, marginBottom: 4 }}>JLM Λ</div>
+                {[['< 0.05 — Low', 'rgba(0,200,0,0.7)'], ['0.05–0.25 — Medium', 'rgba(255,200,0,0.7)'], ['> 0.25 — High', 'rgba(255,40,0,0.7)']].map(([l, c]) => (
+                  <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                    <div style={{ width: 12, height: 8, background: c, borderRadius: 2, flexShrink: 0 }} />
+                    <span style={{ color: '#cbd5e1' }}>{l}</span>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
 
           {/* Mobile: open sidebar button */}
