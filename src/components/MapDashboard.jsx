@@ -212,10 +212,15 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
       if (!femaLayerRef.current) {
         map.current.addSource('fema-nfhl', {
           type: 'raster',
-          tiles: ['https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer/tile/{z}/{y}/{x}'],
+          tiles: [
+            'https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/export' +
+            '?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=256,256' +
+            '&layers=show:28&f=image&format=png32&transparent=true',
+          ],
           tileSize: 256,
+          minzoom: 10,
         })
-        map.current.addLayer({ id: 'fema-raster', type: 'raster', source: 'fema-nfhl', paint: { 'raster-opacity': 0.7 } })
+        map.current.addLayer({ id: 'fema-raster', type: 'raster', source: 'fema-nfhl', paint: { 'raster-opacity': 0.75 } })
         femaLayerRef.current = true
       } else {
         map.current.setLayoutProperty('fema-raster', 'visibility', 'visible')
