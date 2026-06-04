@@ -39,8 +39,19 @@ const IRMA_STEPS = [
 ]
 
 const STORM_PRESETS = {
-  matthew: { label: 'Hurricane Matthew 2016', steps: MATTHEW_STEPS, start: '2016-10-06', end: '2016-10-08' },
-  irma:    { label: 'Hurricane Irma 2017',    steps: IRMA_STEPS,    start: '2017-09-07', end: '2017-09-12' },
+  matthew:  { label: 'Hurricane Matthew 2016',  steps: MATTHEW_STEPS, start: '2016-10-06', end: '2016-10-08' },
+  irma:     { label: 'Hurricane Irma 2017',     steps: IRMA_STEPS,    start: '2017-09-07', end: '2017-09-12' },
+  harvey:   { label: 'Hurricane Harvey 2017',   steps: [],            start: '2017-08-25', end: '2017-08-31' },
+  maria:    { label: 'Hurricane Maria 2017',    steps: [],            start: '2017-09-20', end: '2017-09-22' },
+  michael:  { label: 'Hurricane Michael 2018',  steps: [],            start: '2018-10-10', end: '2018-10-12' },
+  florence: { label: 'Hurricane Florence 2018', steps: [],            start: '2018-09-14', end: '2018-09-16' },
+  dorian:   { label: 'Hurricane Dorian 2019',   steps: [],            start: '2019-09-01', end: '2019-09-06' },
+  sally:    { label: 'Hurricane Sally 2020',    steps: [],            start: '2020-09-14', end: '2020-09-16' },
+  ida:      { label: 'Hurricane Ida 2021',      steps: [],            start: '2021-08-29', end: '2021-08-31' },
+  ian:      { label: 'Hurricane Ian 2022',      steps: [],            start: '2022-09-26', end: '2022-09-30' },
+  nicole:   { label: 'Hurricane Nicole 2022',   steps: [],            start: '2022-11-09', end: '2022-11-11' },
+  idalia:   { label: 'Hurricane Idalia 2023',   steps: [],            start: '2023-08-29', end: '2023-08-31' },
+  debby:    { label: 'Hurricane Debby 2024',    steps: [],            start: '2024-08-04', end: '2024-08-08' },
 }
 
 function lambdaToRgba(lambda) {
