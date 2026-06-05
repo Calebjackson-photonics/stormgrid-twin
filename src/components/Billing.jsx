@@ -195,7 +195,7 @@ export default function Billing() {
                 onClick={() => {
                   if (isCurrent) return
                   if (tier.cta === 'Contact Sales') {
-                    window.location.href = `mailto:jacksoncaleb70@gmail.com?subject=StormGrid ${tier.name} Inquiry`
+                    window.location.href = `mailto:getstormgrid@gmail.com?subject=Storm%20Grid%20${tier.name}%20Inquiry`
                   } else {
                     handleCheckout(tier.id)
                   }
