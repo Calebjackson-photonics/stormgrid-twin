@@ -27,7 +27,6 @@ const TIERS = [
       'CSV export',
     ],
     cta: 'Start Professional',
-    priceId: 'price_1TahCoRuUuWdb6lUY9xnafWe',
   },
   {
     id: 'enterprise',
@@ -49,7 +48,6 @@ const TIERS = [
       'Dedicated onboarding',
     ],
     cta: 'Contact Sales',
-    priceId: 'price_1TahFqRuUuWdb6lUru9epYfY',
   },
   {
     id: 'municipal',
@@ -69,7 +67,6 @@ const TIERS = [
       'White-label output',
     ],
     cta: 'Contact Sales',
-    priceId: 'price_1TahKtRuUuWdb6lUXYn3Em7M',
   },
 ]
 
@@ -78,11 +75,21 @@ export default function Billing() {
   const [clients, setClients]     = useState([])
   const [runs, setRuns]           = useState([])
   const [apiKeys, setApiKeys]     = useState([])
-  const [checkoutLoading, setCheckoutLoading] = useState(null) // price_id being loaded
+  const [checkoutLoading, setCheckoutLoading] = useState(null)
   const [checkoutError, setCheckoutError]     = useState('')
+  const [priceIds, setPriceIds]               = useState({})
 
-  async function handleCheckout(priceId) {
-    setCheckoutLoading(priceId); setCheckoutError('')
+  useEffect(() => {
+    fetch(`${API}/stripe/prices`)
+      .then(r => r.json())
+      .then(setPriceIds)
+      .catch(() => {})
+  }, [])
+
+  async function handleCheckout(tierId) {
+    const priceId = priceIds[tierId]
+    if (!priceId) { setCheckoutError('Price not available — try again shortly'); return }
+    setCheckoutLoading(tierId); setCheckoutError('')
     try {
       const res  = await fetch(`${API}/stripe/create-checkout-session`, {
         method: 'POST',
@@ -190,13 +197,13 @@ export default function Billing() {
                   if (tier.cta === 'Contact Sales') {
                     window.location.href = `mailto:jacksoncaleb70@gmail.com?subject=StormGrid ${tier.name} Inquiry`
                   } else {
-                    handleCheckout(tier.priceId)
+                    handleCheckout(tier.id)
                   }
                 }}
-                disabled={isCurrent || checkoutLoading === tier.priceId}
-                style={{ background: isCurrent ? tier.color + '22' : checkoutLoading === tier.priceId ? '#1e3a5f' : tier.color, color: isCurrent || checkoutLoading === tier.priceId ? tier.color : '#0a1628', border: `1px solid ${tier.color}`, borderRadius: 4, padding: '10px', fontSize: 12, fontWeight: 700, cursor: isCurrent ? 'default' : 'pointer', width: '100%' }}
+                disabled={isCurrent || checkoutLoading === tier.id}
+                style={{ background: isCurrent ? tier.color + '22' : checkoutLoading === tier.id ? '#1e3a5f' : tier.color, color: isCurrent || checkoutLoading === tier.id ? tier.color : '#0a1628', border: `1px solid ${tier.color}`, borderRadius: 4, padding: '10px', fontSize: 12, fontWeight: 700, cursor: isCurrent ? 'default' : 'pointer', width: '100%' }}
               >
-                {isCurrent ? 'Current Plan' : checkoutLoading === tier.priceId ? 'Redirecting...' : tier.cta}
+                {isCurrent ? 'Current Plan' : checkoutLoading === tier.id ? 'Redirecting...' : tier.cta}
               </button>
             </div>
           )
