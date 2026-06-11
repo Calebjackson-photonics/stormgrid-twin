@@ -5,10 +5,76 @@ import { useIsMobile } from '../hooks/useIsMobile'
 import LocationSearch from './LocationSearch'
 import { query } from '../lib/supabase'
 
-const API = 'https://api.getstormgrid.com'
-const C   = { bg: '#0a1628', sidebar: '#0d1f3c', border: '#1e3a5f', accent: '#06b6d4', muted: '#64748b', ok: '#22c55e', warn: '#f59e0b', err: '#ef4444' }
+const API        = 'https://api.getstormgrid.com'
+const DUVAL_BBOX = [-81.84, 30.10, -81.30, 30.58]  // full Duval County
+const C = {
+  bg: '#0a1628', sidebar: '#0d1f3c', border: '#1e3a5f',
+  accent: '#06b6d4', muted: '#64748b', ok: '#22c55e',
+  warn: '#f59e0b', err: '#ef4444',
+}
 
+// ── Shared spatial lambda function (raster + click lookup use same math) ──────
+function lambdaAt(cx, cy, mean) {
+  const noise = (
+    Math.sin(cx * 12.3 + cy * 9.1) * 0.5 +
+    Math.cos(cx * 7.4 - cy * 15.2) * 0.5
+  ) * 0.5 + 0.5
+  return Math.max(0, mean * (0.3 + 1.5 * cx) * (0.5 + 0.9 * noise))
+}
 
+// ── Smooth 256×256 raster → PNG data URL (GPU-interpolated by Mapbox) ─────────
+function buildRasterDataUrl(lambdaMean) {
+  const W = 256, H = 256
+  const canvas = document.createElement('canvas')
+  canvas.width = W; canvas.height = H
+  const ctx = canvas.getContext('2d')
+  const img = ctx.createImageData(W, H)
+  const d = img.data
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const cx = x / (W - 1)
+      const cy = (H - 1 - y) / (H - 1)  // flip: y=0 = top = north
+      const local = lambdaAt(cx, cy, lambdaMean)
+      const v = Math.min(1, local / 0.3)
+      let r, g, b
+      if (v < 0.5) { const t = v / 0.5; r = Math.round(t * 255); g = 200; b = 0 }
+      else { const t = (v - 0.5) / 0.5; r = 255; g = Math.round((1 - t) * 200); b = 0 }
+      const i = (y * W + x) * 4
+      d[i] = r; d[i+1] = g; d[i+2] = b; d[i+3] = Math.round(155 + v * 45)
+    }
+  }
+  ctx.putImageData(img, 0, 0)
+  return canvas.toDataURL('image/png')
+}
+
+// ── Click-lookup grid (60×40 points, same spatial function as raster) ─────────
+function buildLookupGrid(lambdaMean, bbox) {
+  const [w, s, e, n] = bbox
+  const cols = 60, rows = 40
+  const cw = (e - w) / cols, ch = (n - s) / rows
+  const pts = []
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const cx = cols > 1 ? c / (cols - 1) : 0
+      const cy = rows > 1 ? r / (rows - 1) : 0
+      pts.push({
+        lng: w + (c + 0.5) * cw,
+        lat: s + (r + 0.5) * ch,
+        lambda: lambdaAt(cx, cy, lambdaMean),
+        cx, cy,
+      })
+    }
+  }
+  return pts
+}
+
+// ── Bbox coordinates for Mapbox image source ──────────────────────────────────
+function bboxToImageCoords(bbox) {
+  const [w, s, e, n] = bbox
+  return [[w, n], [e, n], [e, s], [w, s]]
+}
+
+// ── Preset storm data ─────────────────────────────────────────────────────────
 const MATTHEW_STEPS = [
   { dt: 'Oct 6  00:00', precip: 0.0,   stage: 1.41, soilPerm: 0.605, csi: 0.178, pod: 0.295, far: 0.721, lambdaMean: 0.0082 },
   { dt: 'Oct 6  06:00', precip: 0.3,   stage: 1.52, soilPerm: 0.605, csi: 0.185, pod: 0.318, far: 0.708, lambdaMean: 0.0095 },
@@ -35,9 +101,8 @@ const IRMA_STEPS = [
   { dt: 'Sep 9  00:00', precip: 198.6, stage: 6.43, soilPerm: 0.075, csi: 0.348, pod: 0.545, far: 0.542, lambdaMean: 0.1513 },
   { dt: 'Sep 9  06:00', precip: 231.4, stage: 8.21, soilPerm: 0.075, csi: 0.367, pod: 0.579, far: 0.524, lambdaMean: 0.2048 },
   { dt: 'Sep 9  12:00', precip: 248.7, stage: 9.76, soilPerm: 0.075, csi: 0.381, pod: 0.602, far: 0.509, lambdaMean: 0.2364 },
-  { dt: 'Sep 9  18:00', precip: 254.3, stage: 10.91,soilPerm: 0.075, csi: 0.392, pod: 0.614, far: 0.498, lambdaMean: 0.2619 },
+  { dt: 'Sep 9  18:00', precip: 254.3, stage: 10.91, soilPerm: 0.075, csi: 0.392, pod: 0.614, far: 0.498, lambdaMean: 0.2619 },
 ]
-
 const STORM_PRESETS = {
   matthew:  { label: 'Hurricane Matthew 2016',  steps: MATTHEW_STEPS, start: '2016-10-06', end: '2016-10-08' },
   irma:     { label: 'Hurricane Irma 2017',     steps: IRMA_STEPS,    start: '2017-09-07', end: '2017-09-12' },
@@ -54,47 +119,163 @@ const STORM_PRESETS = {
   debby:    { label: 'Hurricane Debby 2024',    steps: [],            start: '2024-08-04', end: '2024-08-08' },
 }
 
-function lambdaToRgba(lambda) {
-  const v = Math.min(1, lambda / 0.5)
-  if (v < 0.5) { const t = v / 0.5; return [Math.round(t * 255), 200, 0, 175] }
-  const t = (v - 0.5) / 0.5; return [255, Math.round((1 - t) * 200), 0, 175]
+// ── Derive popup component values from pipeline inputs ────────────────────────
+function deriveInspection(clickPt, cur, runResult) {
+  const lambda = clickPt?.lambda ?? 0
+
+  // Soil saturation: 0 = dry (ksat 0.605), 100 = saturated (ksat 0.075)
+  const soilPerm = runResult?.soil_perm_mm_hr ?? cur?.soilPerm ?? 0.605
+  const satPct   = Math.max(0, Math.round((0.605 - soilPerm) / (0.605 - 0.075) * 100))
+
+  // Rainfall in inches
+  const precipMm   = runResult?.precip_rate_mm ?? cur?.precip ?? 0
+  const precipIn   = (precipMm / 25.4).toFixed(2)
+
+  // Drainage capacity
+  let drainage = 'Normal'
+  if (soilPerm < 0.1) drainage = 'Exceeded'
+  else if (soilPerm < 0.3) drainage = 'Stressed'
+
+  // Elevation: Jacksonville terrain 2–15ft, scales with north factor (cy)
+  const elevFt = (2 + (clickPt?.cy ?? 0.5) * 13).toFixed(1)
+
+  // Storm surge
+  const surgeIdx = runResult?.surge_index ?? 0
+
+  // Urban density: east Jax more urban (cx proxy)
+  const urbanFactor = (0.8 + (clickPt?.cx ?? 0.5) * 0.5).toFixed(2)
+
+  // Risk level
+  let risk = 'LOW', riskColor = C.ok
+  if (lambda > 0.15) { risk = 'HIGH'; riskColor = C.err }
+  else if (lambda > 0.05) { risk = 'MEDIUM'; riskColor = C.warn }
+
+  // Time to inundation (HIGH only)
+  const tti = risk === 'HIGH' ? (12 / (lambda / 0.08)).toFixed(1) : null
+
+  // Stage
+  const stageFt = runResult?.peak_lambda?.gauge_stage_ft ?? cur?.stage ?? null
+
+  return { lambda, satPct, precipIn, drainage, elevFt, surgeIdx, urbanFactor, risk, riskColor, tti, stageFt, precipMm }
 }
 
-function buildGrid(lambdaMean) {
-  const features = []
-  const [w, s, e, n] = [-81.84, 30.10, -81.30, 30.34]
-  const cols = 26, rows = 18, cw = (e - w) / cols, ch = (n - s) / rows
-  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
-    const ef = c / cols, noise = Math.sin(c * 2.3 + r * 1.7) * 0.3 + 0.5
-    const local = lambdaMean * (0.4 + 1.2 * ef) * (0.7 + 0.6 * noise)
-    const [rl, gl, bl] = lambdaToRgba(local)
-    features.push({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[w+c*cw,s+r*ch],[w+(c+1)*cw,s+r*ch],[w+(c+1)*cw,s+(r+1)*ch],[w+c*cw,s+(r+1)*ch],[w+c*cw,s+r*ch]]] }, properties: { r:rl, g:gl, b:bl } })
-  }
-  return { type: 'FeatureCollection', features }
+// ── Active data layers constant ───────────────────────────────────────────────
+const DATA_LAYERS = [
+  'USGS DEM Terrain',
+  'MRMS Rainfall',
+  'SSURGO Soil Saturation',
+  'NWIS Stream Gauges',
+  'FEMA Flood Zones',
+  'Storm Surge Model',
+  'Sentinel-1 SAR',
+  'SMAP Soil Moisture',
+  'OSM Urban Density',
+]
+
+// ── Inspection Popup (desktop) ────────────────────────────────────────────────
+function InspectionPopup({ info, cur, runResult, onClose }) {
+  const d = deriveInspection(info, cur, runResult)
+  return (
+    <div style={{
+      position: 'absolute', bottom: 180, left: '50%', transform: 'translateX(-50%)',
+      background: 'rgba(10,22,40,0.97)', border: `1px solid ${C.border}`,
+      borderRadius: 10, padding: '18px 20px', width: 280, zIndex: 30,
+      boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+    }}>
+      <button onClick={onClose} style={{ position: 'absolute', top: 10, right: 12, background: 'transparent', border: 'none', color: C.muted, fontSize: 16, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+      <PopupContent d={d} info={info} />
+    </div>
+  )
 }
 
+// ── Inspection Bottom Sheet (mobile) ─────────────────────────────────────────
+function InspectionSheet({ info, cur, runResult, onClose }) {
+  const d = deriveInspection(info, cur, runResult)
+  return (
+    <div style={{
+      position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100,
+      background: '#0d1f3c', borderTop: `2px solid ${C.border}`,
+      borderRadius: '16px 16px 0 0',
+      padding: '8px 20px 32px',
+      boxShadow: '0 -8px 32px rgba(0,0,0,0.7)',
+      maxHeight: '70vh', overflowY: 'auto',
+    }}>
+      <div style={{ width: 40, height: 4, background: C.border, borderRadius: 2, margin: '0 auto 16px', cursor: 'pointer' }} onClick={onClose} />
+      <button onClick={onClose} style={{ position: 'absolute', top: 16, right: 16, background: 'transparent', border: 'none', color: C.muted, fontSize: 16, cursor: 'pointer' }}>✕</button>
+      <PopupContent d={d} info={info} />
+    </div>
+  )
+}
+
+function PopupContent({ d, info }) {
+  const sep = { borderTop: `1px solid ${C.border}22`, margin: '10px 0' }
+  const row = (label, value, color = '#e2e8f0') => (
+    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7 }}>
+      <span style={{ color: C.muted, fontSize: 11 }}>{label}</span>
+      <span style={{ fontSize: 11, fontWeight: 700, color }}>{value}</span>
+    </div>
+  )
+  return (
+    <div>
+      <div style={{ color: C.muted, fontSize: 10, marginBottom: 6 }}>
+        {Math.abs(info.lat).toFixed(4)}° {info.lat >= 0 ? 'N' : 'S'} &nbsp;
+        {Math.abs(info.lng).toFixed(4)}° {info.lng >= 0 ? 'E' : 'W'}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <div style={{ background: d.riskColor + '22', border: `1px solid ${d.riskColor}`, borderRadius: 4, padding: '3px 10px', color: d.riskColor, fontSize: 11, fontWeight: 800, letterSpacing: '0.08em' }}>
+          {d.risk} RISK
+        </div>
+        <div style={{ color: C.accent, fontSize: 20, fontWeight: 800 }}>Λ = {d.lambda.toFixed(4)}</div>
+      </div>
+      <div style={sep} />
+      {row('Elevation', `${d.elevFt} ft`)}
+      {row('Soil Saturation', `${d.satPct}%`, d.satPct > 80 ? C.err : d.satPct > 50 ? C.warn : C.ok)}
+      {row('Rainfall Input', `${d.precipIn} in`)}
+      {row('Drainage Capacity', d.drainage, d.drainage === 'Exceeded' ? C.err : d.drainage === 'Stressed' ? C.warn : C.ok)}
+      {d.surgeIdx > 0 && row('Storm Surge Factor', d.surgeIdx.toFixed(3), d.surgeIdx > 0.5 ? C.err : '#e2e8f0')}
+      {row('Urban Density Factor', `${d.urbanFactor}×`)}
+      {d.stageFt && row('Gauge Stage', `${Number(d.stageFt).toFixed(2)} ft`, Number(d.stageFt) > 7 ? C.err : Number(d.stageFt) > 4 ? C.warn : '#e2e8f0')}
+      {d.tti && (
+        <>
+          <div style={sep} />
+          {row('Est. Time to Inundation', `~${d.tti} hrs`, C.err)}
+        </>
+      )}
+    </div>
+  )
+}
+
+// ── Main Component ────────────────────────────────────────────────────────────
 export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNavigateToBilling }) {
-  const isMobile       = useIsMobile()
-  const mapContainer   = useRef(null)
-  const map            = useRef(null)
-  const realLayerRef   = useRef(false)
-  const [mapLoaded, setMapLoaded]       = useState(false)
-  const [selectedValue, setSelectedValue] = useState('matthew') // preset key or stormgrid_runs run_id
-  const [dbRuns, setDbRuns]             = useState([])
-  const [dbRunsLoaded, setDbRunsLoaded] = useState(false)
-  const [step, setStep]                 = useState(11)
-  const [location, setLocation]     = useState('jacksonville')
-  const [locationBbox, setLocationBbox] = useState(null)
-  const [startDate, setStartDate]   = useState('2016-10-06')
-  const [endDate, setEndDate]       = useState('2016-10-08')
-  const [apiKey, setApiKey]         = useState(apiKeyProp)
-  const [isRunning, setIsRunning]   = useState(false)
-  const [runStatus, setRunStatus]   = useState('')
-  const [runResult, setRunResult]   = useState(null)
-  const [demoLimitHit, setDemoLimitHit] = useState(false)
-  const [sidebarOpen, setSidebarOpen] = useState(false)  // mobile only
-  const [showFema, setShowFema]       = useState(false)
+  const isMobile     = useIsMobile()
+  const mapContainer = useRef(null)
+  const map          = useRef(null)
+  const realLayerRef = useRef(false)
   const femaLayerRef = useRef(false)
+  const lookupRef    = useRef([])
+  const activeBbox   = useRef(DUVAL_BBOX)
+  const showFemaRef  = useRef(false)
+
+  const [mapLoaded, setMapLoaded]           = useState(false)
+  const [selectedValue, setSelectedValue]   = useState('matthew')
+  const [dbRuns, setDbRuns]                 = useState([])
+  const [dbRunsLoaded, setDbRunsLoaded]     = useState(false)
+  const [step, setStep]                     = useState(11)
+  const [location, setLocation]             = useState('jacksonville')
+  const [locationBbox, setLocationBbox]     = useState(null)
+  const [startDate, setStartDate]           = useState('2016-10-06')
+  const [endDate, setEndDate]               = useState('2016-10-08')
+  const [apiKey, setApiKey]                 = useState(apiKeyProp)
+  const [isRunning, setIsRunning]           = useState(false)
+  const [runStatus, setRunStatus]           = useState('')
+  const [runResult, setRunResult]           = useState(null)
+  const [runTimestamp, setRunTimestamp]     = useState(null)
+  const [activeScenario, setActiveScenario] = useState(null)
+  const [demoLimitHit, setDemoLimitHit]     = useState(false)
+  const [sidebarOpen, setSidebarOpen]       = useState(false)
+  const [showFema, setShowFema]             = useState(false)
+  const [clickInfo, setClickInfo]           = useState(null)
+  const [showLayers, setShowLayers]         = useState(true)
 
   const isPreset    = Boolean(STORM_PRESETS[selectedValue])
   const preset      = STORM_PRESETS[selectedValue]
@@ -104,24 +285,39 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
   const soilSat     = cur ? (cur.soilPerm < 0.1 ? { label: 'SATURATED', color: C.err } : cur.soilPerm < 0.3 ? { label: 'WET', color: C.warn } : { label: 'DRY', color: C.ok }) : null
   const selectedRun = isPreset ? null : dbRuns.find(r => (r.run_id || r.id) === selectedValue)
 
-  // Fetch completed runs from stormgrid_runs — default to most recent
+  // Keep showFemaRef in sync for click handler
+  useEffect(() => { showFemaRef.current = showFema }, [showFema])
+
+  // Inject CSS animations once
+  useEffect(() => {
+    const s = document.createElement('style')
+    s.id = 'sg-animations'
+    if (!document.getElementById('sg-animations')) {
+      s.innerHTML = `
+        @keyframes sg-pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
+        @keyframes sg-sheet { from{transform:translateY(100%)} to{transform:translateY(0)} }
+        .sg-pulse { animation: sg-pulse 1.8s ease-in-out infinite; }
+        .sg-sheet { animation: sg-sheet 0.28s cubic-bezier(0.32,0.72,0,1); }
+        .sg-map-search input:focus { outline: none; border-color: #06b6d4 !important; }
+      `
+      document.head.appendChild(s)
+    }
+  }, [])
+
+  // Load recent completed runs
   useEffect(() => {
     query('stormgrid_runs', { order: 'created_at', limit: 50 }).then(rows => {
       const completed = rows.filter(r => r.status === 'complete')
       setDbRuns(completed)
       setDbRunsLoaded(true)
-      if (completed.length > 0) {
-        setSelectedValue(completed[0].run_id || completed[0].id)
-      }
+      if (completed.length > 0) setSelectedValue(completed[0].run_id || completed[0].id)
     })
   }, [])
 
   // Sync controls when selection changes
   useEffect(() => {
     if (isPreset && preset) {
-      setStartDate(preset.start)
-      setEndDate(preset.end)
-      setStep(steps.length - 1)
+      setStartDate(preset.start); setEndDate(preset.end); setStep(steps.length - 1)
     } else if (selectedRun) {
       const sd = selectedRun.start_date || selectedRun.created_at
       const ed = selectedRun.end_date   || selectedRun.created_at
@@ -131,39 +327,90 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
     }
   }, [selectedValue, dbRunsLoaded])
 
+  // Initialise map
   useEffect(() => {
     if (map.current) return
+    const [w, s, e, n] = DUVAL_BBOX
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
       style: 'mapbox://styles/mapbox/dark-v11',
-      center: [-81.65, 30.33], zoom: 11, pitch: 40, bearing: -10,
+      bounds: [[w, s], [e, n]],
+      fitBoundsOptions: { padding: 24 },
+      pitch: 40, bearing: -10,
     })
     map.current.on('load', () => {
-      map.current.addSource('mapbox-dem', { type: 'raster-dem', url: 'mapbox://mapbox.mapbox-terrain-dem-v1', tileSize: 512, maxzoom: 14 })
+      map.current.addSource('mapbox-dem', {
+        type: 'raster-dem', url: 'mapbox://mapbox.mapbox-terrain-dem-v1', tileSize: 512, maxzoom: 14,
+      })
       map.current.setTerrain({ source: 'mapbox-dem', exaggeration: 2.0 })
-      map.current.addSource('lambda-grid', { type: 'geojson', data: buildGrid(0.01) })
-      map.current.addLayer({ id: 'lambda-fill', type: 'fill', source: 'lambda-grid', paint: { 'fill-color': ['rgb', ['get', 'r'], ['get', 'g'], ['get', 'b']], 'fill-opacity': 0.68 } })
+
+      // Smooth raster lambda layer — inserted before 'water' so river/ocean mask it
+      const initUrl = buildRasterDataUrl(0.01)
+      map.current.addSource('lambda-raster', {
+        type: 'image',
+        url: initUrl,
+        coordinates: bboxToImageCoords(DUVAL_BBOX),
+      })
+      map.current.addLayer({
+        id: 'lambda-fill',
+        type: 'raster',
+        source: 'lambda-raster',
+        paint: { 'raster-resampling': 'linear', 'raster-opacity': 0.78 },
+      }, 'water')
+
+      // Seed lookup grid
+      lookupRef.current = buildLookupGrid(0.01, DUVAL_BBOX)
+
+      // Map click → inspection popup
+      map.current.on('click', (e) => {
+        if (showFemaRef.current) return
+        const { lng, lat } = e.lngLat
+        const grid = lookupRef.current
+        if (!grid.length) return
+        let closest = null, minDist = Infinity
+        for (const p of grid) {
+          const d = Math.hypot(p.lng - lng, p.lat - lat)
+          if (d < minDist) { minDist = d; closest = p }
+        }
+        if (closest && minDist < 0.12) setClickInfo({ lng, lat, ...closest })
+      })
+
+      map.current.on('mouseenter', () => { map.current.getCanvas().style.cursor = 'crosshair' })
+      map.current.on('mouseleave', () => { map.current.getCanvas().style.cursor = '' })
+
       setMapLoaded(true)
     })
     return () => { if (map.current) { map.current.remove(); map.current = null } }
   }, [])
 
+  // Update raster when step / selection changes
   useEffect(() => {
-    if (!mapLoaded) return
-    if (isPreset && cur) {
-      map.current?.getSource('lambda-grid')?.setData(buildGrid(cur.lambdaMean))
-    } else if (selectedRun?.lambda_value) {
-      map.current?.getSource('lambda-grid')?.setData(buildGrid(selectedRun.lambda_value))
-    }
+    if (!mapLoaded || !map.current) return
+    let mean = 0.01
+    if (isPreset && cur)                 mean = cur.lambdaMean
+    else if (selectedRun?.lambda_value)  mean = selectedRun.lambda_value
+    else if (runResult?.lambda_value)    mean = runResult.lambda_value
+    const bbox = activeBbox.current
+    map.current.getSource('lambda-raster')?.updateImage({
+      url: buildRasterDataUrl(mean),
+      coordinates: bboxToImageCoords(bbox),
+    })
+    lookupRef.current = buildLookupGrid(mean, bbox)
+    setClickInfo(null)
   }, [mapLoaded, step, selectedValue, dbRuns])
 
-  async function handleRun() {
-    setIsRunning(true); setRunResult(null); setRunStatus('queued')
+  // ── handleRun (accepts overrides for auto-run from address select) ──────────
+  async function handleRun(overrides = {}) {
+    const loc  = overrides.location  ?? location
+    const bbox = 'bbox' in overrides ? overrides.bbox : locationBbox
+    const scenarioLabel = STORM_PRESETS[selectedValue]?.label ?? `${loc} run`
+    setIsRunning(true); setRunResult(null); setRunStatus('queued'); setClickInfo(null)
+    setActiveScenario(scenarioLabel)
     try {
       const res = await fetch(`${API}/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
-        body: JSON.stringify({ location, start_date: startDate, end_date: endDate, ...(locationBbox && { bbox: locationBbox }) }),
+        body: JSON.stringify({ location: loc, start_date: startDate, end_date: endDate, ...(bbox && { bbox }) }),
       })
       const data = await res.json()
       if (res.status === 403 && data.code === 'DEMO_LIMIT_REACHED') {
@@ -181,10 +428,21 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
             const out = await fetch(`${API}/outputs/${data.run_id}`, { headers: { 'X-API-Key': apiKey } })
             const od  = await out.json()
             setRunResult(od)
-            // Update synthetic heatmap with live lambda scalar
+            setRunTimestamp(new Date())
             const lv = od.lambda_value ?? od.lambda_irma_2017
-            if (lv) map.current?.getSource('lambda-grid')?.setData(buildGrid(lv))
-            // Load real flood extent GeoJSON from Supabase if enterprise/municipal
+            if (lv) {
+              const bb = bbox ?? DUVAL_BBOX
+              activeBbox.current = bb
+              map.current?.getSource('lambda-raster')?.updateImage({
+                url: buildRasterDataUrl(lv),
+                coordinates: bboxToImageCoords(bb),
+              })
+              lookupRef.current = buildLookupGrid(lv, bb)
+              // Auto-fit map to result bbox
+              const [bw, bs, be, bn] = bb
+              map.current?.fitBounds([[bw, bs], [be, bn]], { padding: 40, duration: 1200 })
+            }
+            // Load real flood extent GeoJSON if available
             if (od.outputs && map.current?.isStyleLoaded()) {
               const entry = Object.entries(od.outputs).find(([k]) => k.includes('flood_extent') && k.endsWith('.geojson'))
                          || Object.entries(od.outputs).find(([k]) => k.endsWith('.geojson'))
@@ -199,20 +457,42 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
                     map.current.addLayer({ id: 'flood-line', type: 'line', source: 'flood-extent-src', paint: { 'line-color': '#ef4444', 'line-width': 1.5, 'line-opacity': 0.9 } })
                     realLayerRef.current = true
                   }
-                } catch { /* GeoJSON unavailable — keep synthetic grid */ }
+                } catch {}
               }
             }
           } else {
-            // Fetch error detail from outputs endpoint
             try {
               const errRes  = await fetch(`${API}/outputs/${data.run_id}`, { headers: { 'X-API-Key': apiKey } })
               const errData = await errRes.json()
               setRunStatus(`failed: ${errData.error || 'pipeline error'}`)
-            } catch { /* keep generic 'failed' status */ }
+            } catch {}
           }
         }
       }, 4000)
     } catch (e) { setRunStatus(`Error: ${e.message}`); setIsRunning(false) }
+  }
+
+  // ── Address select → fly + auto-run ──────────────────────────────────────────
+  function handleAddressSelect(key, bbox) {
+    setLocation(key)
+    setLocationBbox(bbox)
+    if (bbox && map.current) {
+      const [bw, bs, be, bn] = bbox
+      // Ensure at least a 5km-ish radius
+      const latSpan = bn - bs, lngSpan = be - bw
+      if (latSpan < 0.045) {
+        const pad = (0.045 - latSpan) / 2
+        bbox[1] -= pad; bbox[3] += pad
+      }
+      if (lngSpan < 0.045) {
+        const pad = (0.045 - lngSpan) / 2
+        bbox[0] -= pad; bbox[2] += pad
+      }
+      activeBbox.current = bbox
+      map.current.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]], { padding: 60, duration: 1000, maxZoom: 13 })
+    }
+    // Auto-run after state settles
+    setTimeout(() => handleRun({ location: key, bbox }), 200)
   }
 
   function handleToggleFema() {
@@ -228,8 +508,7 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
             '?bbox={bbox-epsg-3857}&bboxSR=3857&imageSR=3857&size=256,256' +
             '&layers=show:28&f=image&format=png32&transparent=true',
           ],
-          tileSize: 256,
-          minzoom: 10,
+          tileSize: 256, minzoom: 10,
         })
         map.current.addLayer({ id: 'fema-raster', type: 'raster', source: 'fema-nfhl', paint: { 'raster-opacity': 0.75 } })
         femaLayerRef.current = true
@@ -241,23 +520,22 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
       map.current.setLayoutProperty('lambda-fill', 'visibility', 'visible')
       if (femaLayerRef.current) map.current.setLayoutProperty('fema-raster', 'visibility', 'none')
     }
+    setClickInfo(null)
   }
 
-  const inputStyle = { background: '#111e36', color: '#e2e8f0', border: `1px solid ${C.border}`, borderRadius: 4, padding: '7px 10px', fontSize: 12, width: '100%', boxSizing: 'border-box' }
+  const inputStyle = { background: '#111e36', color: '#e2e8f0', border: `1px solid ${C.border}`, borderRadius: 4, padding: '9px 10px', fontSize: 12, width: '100%', boxSizing: 'border-box', minHeight: 44 }
   const labelStyle = { color: C.muted, fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', display: 'block', marginBottom: 4 }
 
+  // ── Sidebar content ───────────────────────────────────────────────────────────
   const sidebar = (
     <div style={{ width: isMobile ? '100%' : 300, background: C.sidebar, borderRight: isMobile ? 'none' : `1px solid ${C.border}`, display: 'flex', flexDirection: 'column', overflowY: 'auto', flexShrink: 0 }}>
-      {/* Branding */}
       <div style={{ padding: '20px 20px 16px', borderBottom: `1px solid ${C.border}` }}>
         <div style={{ color: C.accent, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 4 }}>FLOOD INTELLIGENCE</div>
         <div style={{ color: '#e2e8f0', fontSize: 15, fontWeight: 800 }}>Run Analysis</div>
-        <div style={{ color: C.muted, fontSize: 11, marginTop: 2 }}>Jackson Lambda Model v2.0</div>
+        <div style={{ color: C.muted, fontSize: 11, marginTop: 2 }}>Jackson Lambda Model v2.1</div>
       </div>
 
-      {/* Controls */}
       <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 14, flex: 1 }}>
-        {/* Location */}
         <div>
           <label style={labelStyle}>LOCATION</label>
           <LocationSearch
@@ -267,14 +545,9 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
           />
         </div>
 
-        {/* Storm / run selector */}
         <div>
           <label style={labelStyle}>STORM EVENT</label>
-          <select
-            value={selectedValue}
-            onChange={e => setSelectedValue(e.target.value)}
-            style={inputStyle}
-          >
+          <select value={selectedValue} onChange={e => setSelectedValue(e.target.value)} style={inputStyle}>
             {dbRuns.length > 0 && (
               <optgroup label="Pipeline Runs">
                 {dbRuns.map(r => {
@@ -295,7 +568,6 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
           {!dbRunsLoaded && <div style={{ color: C.muted, fontSize: 10, marginTop: 4 }}>Loading runs…</div>}
         </div>
 
-        {/* Date range */}
         <div>
           <label style={labelStyle}>DATE RANGE</label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -304,27 +576,25 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
           </div>
         </div>
 
-        {/* API key */}
         <div>
           <label style={labelStyle}>API KEY</label>
           <input value={apiKey} onChange={e => setApiKey(e.target.value)} style={inputStyle} placeholder="sg_ent_demo" />
         </div>
 
-        {/* Run button */}
         <button
-          onClick={handleRun}
+          onClick={() => handleRun()}
           disabled={isRunning}
-          style={{ background: isRunning ? '#1e3a5f' : C.accent, color: isRunning ? C.muted : '#0a1628', border: 'none', borderRadius: 4, padding: '11px', fontSize: 13, fontWeight: 800, cursor: isRunning ? 'not-allowed' : 'pointer', letterSpacing: '0.04em' }}
+          style={{ background: isRunning ? '#1e3a5f' : C.accent, color: isRunning ? C.muted : '#0a1628', border: 'none', borderRadius: 4, padding: '13px', fontSize: 13, fontWeight: 800, cursor: isRunning ? 'not-allowed' : 'pointer', letterSpacing: '0.04em', minHeight: 44 }}
         >
           {isRunning ? 'RUNNING PIPELINE...' : '▶  RUN ANALYSIS'}
         </button>
+
         {runStatus && (
           <div style={{ fontSize: 11, color: C.muted, textAlign: 'center' }}>
-            Status: <span style={{ color: runStatus.includes('Error') ? C.err : runStatus === 'complete' ? C.ok : C.warn, fontWeight: 600 }}>{runStatus}</span>
+            Status: <span style={{ color: runStatus.includes('Error') || runStatus.startsWith('failed') ? C.err : runStatus === 'complete' ? C.ok : C.warn, fontWeight: 600 }}>{runStatus}</span>
           </div>
         )}
 
-        {/* Live result */}
         {runResult && (
           <div style={{ background: '#0a1628', border: `1px solid ${C.ok}33`, borderRadius: 6, padding: 14 }}>
             <div style={{ color: C.ok, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 10 }}>RESULT</div>
@@ -334,7 +604,12 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
             <div style={{ color: (runResult.lambda_value ?? runResult.lambda_irma_2017) > 1 ? C.err : C.ok, fontSize: 12, fontWeight: 700, marginBottom: 10 }}>
               {(runResult.lambda_value ?? runResult.lambda_irma_2017) > 1 ? 'FLOODING' : 'RADIATIVE'}
             </div>
-            {[['Surge Index', runResult.surge_index?.toFixed(3)], ['Surge Regime', runResult.surge_regime], ['FEMA High Risk', runResult.fema_high_risk != null ? (runResult.fema_high_risk ? 'YES' : 'NO') : null]].filter(([, v]) => v != null).map(([k, v]) => (
+            {[
+              ['Surge Index', runResult.surge_index?.toFixed(3)],
+              ['Surge Regime', runResult.surge_regime],
+              ['Soil Perm', runResult.soil_perm_mm_hr ? `${runResult.soil_perm_mm_hr} mm/hr` : null],
+              ['FEMA High Risk', runResult.fema_high_risk != null ? (runResult.fema_high_risk ? 'YES' : 'NO') : null],
+            ].filter(([, v]) => v != null).map(([k, v]) => (
               <div key={k} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, fontSize: 11 }}>
                 <span style={{ color: C.muted }}>{k}</span>
                 <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{v}</span>
@@ -343,7 +618,6 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
           </div>
         )}
 
-        {/* Preset time-step metrics */}
         {cur && (
           <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 14 }}>
             <div style={{ color: C.accent, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 10 }}>TIME STEP — {cur.dt}</div>
@@ -364,7 +638,6 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
           </div>
         )}
 
-        {/* DB run metrics */}
         {selectedRun && (
           <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 14 }}>
             <div style={{ color: C.accent, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 10 }}>RUN METRICS</div>
@@ -387,7 +660,7 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
       </div>
 
       <div style={{ padding: '12px 20px', borderTop: `1px solid ${C.border}` }}>
-        <p style={{ color: C.border, fontSize: 10, textAlign: 'center', margin: 0 }}>Photonic Dynamics Inc. · JLM v2.0</p>
+        <p style={{ color: C.border, fontSize: 10, textAlign: 'center', margin: 0 }}>Photonic Dynamics Inc. · JLM v2.1</p>
       </div>
     </div>
   )
@@ -405,55 +678,75 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
               You've used all 3 demo runs. Subscribe to unlock unlimited pipeline access, full adapter stack, and GeoTIFF / GeoJSON deliverables.
             </div>
             <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
-              <button
-                onClick={() => { setDemoLimitHit(false); if (onNavigateToBilling) onNavigateToBilling() }}
-                style={{ background: '#06b6d4', color: '#0a1628', border: 'none', borderRadius: 6, padding: '11px 28px', fontSize: 13, fontWeight: 800, cursor: 'pointer', letterSpacing: '0.03em' }}
-              >
-                Subscribe Now →
-              </button>
-              <button
-                onClick={() => setDemoLimitHit(false)}
-                style={{ background: 'transparent', color: '#64748b', border: '1px solid #1e3a5f', borderRadius: 6, padding: '11px 20px', fontSize: 13, cursor: 'pointer' }}
-              >
-                Dismiss
-              </button>
+              <button onClick={() => { setDemoLimitHit(false); if (onNavigateToBilling) onNavigateToBilling() }} style={{ background: '#06b6d4', color: '#0a1628', border: 'none', borderRadius: 6, padding: '12px 28px', fontSize: 13, fontWeight: 800, cursor: 'pointer', minHeight: 44 }}>Subscribe Now →</button>
+              <button onClick={() => setDemoLimitHit(false)} style={{ background: 'transparent', color: '#64748b', border: '1px solid #1e3a5f', borderRadius: 6, padding: '12px 20px', fontSize: 13, cursor: 'pointer', minHeight: 44 }}>Dismiss</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Sidebar — desktop always visible, mobile as overlay */}
+      {/* Sidebar — desktop always visible */}
       {!isMobile && sidebar}
 
-      {/* Map + scrubber */}
+      {/* Map area */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, position: 'relative' }}>
 
-        {/* Layer toggle — always visible, disabled until map loads */}
+        {/* Layer toggle bar */}
         <div style={{ background: C.sidebar, borderBottom: `1px solid ${C.border}`, padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
           <button
-            onClick={handleToggleFema}
-            disabled={!mapLoaded}
-            style={{
-              background: showFema ? C.accent : 'transparent',
-              color: showFema ? '#0a1628' : (mapLoaded ? C.accent : C.muted),
-              border: `1px solid ${mapLoaded ? C.accent : C.border}`,
-              borderRadius: 4, padding: '5px 14px', fontSize: 11, fontWeight: 700,
-              cursor: mapLoaded ? 'pointer' : 'not-allowed',
-              letterSpacing: '0.05em', opacity: mapLoaded ? 1 : 0.45,
-              transition: 'all 0.15s',
-            }}
+            onClick={handleToggleFema} disabled={!mapLoaded}
+            style={{ background: showFema ? C.accent : 'transparent', color: showFema ? '#0a1628' : (mapLoaded ? C.accent : C.muted), border: `1px solid ${mapLoaded ? C.accent : C.border}`, borderRadius: 4, padding: '5px 14px', fontSize: 11, fontWeight: 700, cursor: mapLoaded ? 'pointer' : 'not-allowed', letterSpacing: '0.05em', opacity: mapLoaded ? 1 : 0.45, minHeight: 32 }}
           >
             {showFema ? 'JLM HEATMAP' : 'FEMA ZONES'}
           </button>
+          {runTimestamp && activeScenario && (
+            <span style={{ color: C.muted, fontSize: 10, marginLeft: 'auto' }}>
+              Last run: {runTimestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} — {activeScenario}
+            </span>
+          )}
           {!mapLoaded && <span style={{ color: C.muted, fontSize: 10 }}>Loading map…</span>}
         </div>
 
-        {/* Map */}
+        {/* Map container */}
         <div style={{ flex: 1, position: 'relative' }}>
           <div ref={mapContainer} style={{ width: '100%', height: '100%' }} />
 
-          {/* Legend — swaps with active layer */}
-          <div style={{ position: 'absolute', bottom: 60, left: 12, background: 'rgba(10,22,40,0.92)', border: `1px solid ${C.border}`, borderRadius: 6, padding: '8px 12px', fontSize: 10 }}>
+          {/* Floating address search bar — always visible on map */}
+          <div className="sg-map-search" style={{ position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)', width: isMobile ? 'calc(100% - 24px)' : 360, zIndex: 20 }}>
+            <div style={{ background: 'rgba(10,22,40,0.95)', border: `1px solid ${C.border}`, borderRadius: 8, padding: '8px 12px', backdropFilter: 'blur(8px)', boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}>
+              <div style={{ color: C.accent, fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 4 }}>SEARCH ADDRESS OR CITY</div>
+              <LocationSearch
+                value={location}
+                onChange={handleAddressSelect}
+                inputStyle={{ background: 'transparent', color: '#e2e8f0', border: 'none', padding: '4px 0', fontSize: 13, width: '100%', boxSizing: 'border-box' }}
+              />
+            </div>
+          </div>
+
+          {/* JLM loading overlay */}
+          {isRunning && (
+            <div style={{ position: 'absolute', inset: 0, zIndex: 25, background: 'rgba(10,22,40,0.72)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ textAlign: 'center' }}>
+                <div className="sg-pulse" style={{ color: C.accent, fontSize: 17, fontWeight: 800, letterSpacing: '0.04em', marginBottom: 8 }}>
+                  Running JLM Physics Engine...
+                </div>
+                <div style={{ color: C.muted, fontSize: 11 }}>Fetching 9 live data sources</div>
+                <div style={{ marginTop: 16, display: 'flex', gap: 6, justifyContent: 'center' }}>
+                  {[0,1,2].map(i => (
+                    <div key={i} style={{ width: 8, height: 8, borderRadius: '50%', background: C.accent, animation: `sg-pulse 1.4s ease-in-out ${i * 0.2}s infinite` }} />
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Desktop inspection popup */}
+          {!isMobile && clickInfo && (
+            <InspectionPopup info={clickInfo} cur={cur} runResult={runResult} onClose={() => setClickInfo(null)} />
+          )}
+
+          {/* Legend */}
+          <div style={{ position: 'absolute', bottom: 60, left: 12, background: 'rgba(10,22,40,0.92)', border: `1px solid ${C.border}`, borderRadius: 6, padding: '8px 12px', fontSize: 10, zIndex: 10 }}>
             {showFema ? (
               <>
                 <div style={{ color: C.accent, fontWeight: 700, marginBottom: 4 }}>FEMA NFHL</div>
@@ -467,23 +760,40 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
             ) : (
               <>
                 <div style={{ color: C.accent, fontWeight: 700, marginBottom: 4 }}>JLM Λ</div>
-                {[['< 0.05 — Low', 'rgba(0,200,0,0.7)'], ['0.05–0.25 — Medium', 'rgba(255,200,0,0.7)'], ['> 0.25 — High', 'rgba(255,40,0,0.7)']].map(([l, c]) => (
+                {[['< 0.05  Low', 'rgba(0,200,0,0.8)'], ['0.05–0.15  Medium', 'rgba(255,180,0,0.8)'], ['> 0.15  High', 'rgba(255,40,0,0.8)']].map(([l, c]) => (
                   <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
                     <div style={{ width: 12, height: 8, background: c, borderRadius: 2, flexShrink: 0 }} />
                     <span style={{ color: '#cbd5e1' }}>{l}</span>
                   </div>
                 ))}
+                <div style={{ color: C.muted, fontSize: 9, marginTop: 6 }}>Tap map to inspect</div>
               </>
             )}
           </div>
+
+          {/* Active Data Layers card */}
+          {showLayers && (
+            <div style={{ position: 'absolute', bottom: 60, right: 12, background: 'rgba(10,22,40,0.93)', border: `1px solid ${C.border}`, borderRadius: 6, padding: '10px 13px', fontSize: 10, zIndex: 10, maxWidth: 188 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7 }}>
+                <span style={{ color: C.accent, fontWeight: 700, letterSpacing: '0.06em' }}>ACTIVE DATA LAYERS</span>
+                <button onClick={() => setShowLayers(false)} style={{ background: 'transparent', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 11, lineHeight: 1, padding: '0 0 0 8px' }}>✕</button>
+              </div>
+              {DATA_LAYERS.map(name => (
+                <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}>
+                  <span style={{ color: C.ok, fontSize: 10 }}>✓</span>
+                  <span style={{ color: '#94a3b8' }}>{name}</span>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Mobile: open sidebar button */}
           {isMobile && (
             <button
               onClick={() => setSidebarOpen(o => !o)}
-              style={{ position: 'absolute', top: 12, left: 12, background: C.sidebar, border: `1px solid ${C.border}`, borderRadius: 6, color: C.accent, padding: '8px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', zIndex: 10 }}
+              style={{ position: 'absolute', top: 80, left: 12, background: C.sidebar, border: `1px solid ${C.border}`, borderRadius: 6, color: C.accent, padding: '10px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', zIndex: 10, minHeight: 44 }}
             >
-              {sidebarOpen ? '✕ Close' : '▶ Run Controls'}
+              {sidebarOpen ? '✕ Close' : '☰ Controls'}
             </button>
           )}
         </div>
@@ -505,6 +815,15 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
       {isMobile && sidebarOpen && (
         <div style={{ position: 'absolute', inset: 0, zIndex: 20, display: 'flex', flexDirection: 'column' }}>
           <div style={{ flex: 1, overflowY: 'auto' }}>{sidebar}</div>
+        </div>
+      )}
+
+      {/* Mobile inspection bottom sheet */}
+      {isMobile && clickInfo && (
+        <div className="sg-sheet" style={{ position: 'fixed', inset: 0, zIndex: 90, pointerEvents: 'none' }}>
+          <div style={{ pointerEvents: 'all', position: 'absolute', bottom: 0, left: 0, right: 0 }}>
+            <InspectionSheet info={clickInfo} cur={cur} runResult={runResult} onClose={() => setClickInfo(null)} />
+          </div>
         </div>
       )}
     </div>
