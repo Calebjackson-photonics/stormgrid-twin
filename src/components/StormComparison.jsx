@@ -43,6 +43,19 @@ function lambdaAt(cx, cy, mean) {
   return Math.max(0, mean * (0.3 + 1.5 * cx) * (0.5 + 0.9 * noise))
 }
 
+function computePeakLambda(lambdaMean) {
+  const cols = 60, rows = 40
+  let peak = 0
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const cx = c / (cols - 1), cy = r / (rows - 1)
+      const val = lambdaAt(cx, cy, lambdaMean)
+      if (val > peak) peak = val
+    }
+  }
+  return peak
+}
+
 // ── 256×256 canvas PNG — same color thresholds as MapDashboard + edge vignette ─
 function buildRasterDataUrl(lambdaMean) {
   const W = 256, H = 256
@@ -418,16 +431,18 @@ export default function StormComparison() {
     )
   }
 
-  function InfoBadges({ info }) {
+  function InfoBadges({ info, peakLambda }) {
     if (!info) return null
+    const displayVal = peakLambda ?? info.lambda
+    const regime = displayVal != null ? (displayVal >= 1 ? 'COMPRESSION' : 'RADIATIVE') : info.regime
     return (
       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        {info.lambda != null && (
-          <span style={{ color: C.accent, fontSize: 11, fontWeight: 700 }}>Λ {Number(info.lambda).toFixed(4)}</span>
+        {displayVal != null && (
+          <span style={{ color: C.accent, fontSize: 11, fontWeight: 700 }}>Λ peak {Number(displayVal).toFixed(4)}</span>
         )}
-        {info.regime && (
-          <span style={{ background: (info.regime === 'FLOODING' ? C.err : C.ok) + '22', color: info.regime === 'FLOODING' ? C.err : C.ok, border: `1px solid ${(info.regime === 'FLOODING' ? C.err : C.ok)}44`, borderRadius: 3, fontSize: 9, fontWeight: 700, padding: '2px 5px' }}>
-            {info.regime}
+        {regime && (
+          <span style={{ background: (regime === 'COMPRESSION' ? C.err : C.ok) + '22', color: regime === 'COMPRESSION' ? C.err : C.ok, border: `1px solid ${(regime === 'COMPRESSION' ? C.err : C.ok)}44`, borderRadius: 3, fontSize: 9, fontWeight: 700, padding: '2px 5px' }}>
+            {regime}
           </span>
         )}
       </div>
@@ -488,7 +503,7 @@ export default function StormComparison() {
             <div style={{ padding: '10px 14px', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <span style={{ color: C.muted, fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>{side.toUpperCase()}</span>
               <StormSelect value={sel} onChange={setSel} />
-              <InfoBadges info={info} />
+              <InfoBadges info={info} peakLambda={computePeakLambda(lambdaMean)} />
               <button
                 onClick={() => exportCsvFromGrid(lambdaMean, info?.label || sel, JAX_BBOX)}
                 style={{ background: 'transparent', color: C.muted, border: `1px solid ${C.border}`, borderRadius: 4, padding: '4px 10px', fontSize: 10, cursor: 'pointer', whiteSpace: 'nowrap', marginLeft: 'auto' }}

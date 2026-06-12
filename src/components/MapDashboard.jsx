@@ -175,6 +175,81 @@ const DATA_LAYERS = [
   'OSM Urban Density',
 ]
 
+// ── LOMA Pre-Assessment modal ─────────────────────────────────────────────────
+function LomaAssessment({ info, d, onClose }) {
+  const [loma, setLoma] = useState({ loading: true, zone: null, bfeFt: null, error: false })
+
+  useEffect(() => {
+    const { lng, lat } = info
+    const base = 'https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer'
+    Promise.all([
+      fetch(`${base}/28/query?geometry=${lng},${lat}&geometryType=esriGeometryPoint&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=FLD_ZONE,ZONE_SUBTY,SFHA_TF&f=json&returnGeometry=false`).then(r => r.json()),
+      fetch(`${base}/14/query?geometry=${lng},${lat}&geometryType=esriGeometryPoint&inSR=4326&distance=500&units=esriSRUnit_Meter&outFields=BFE_LN_T,ELEV&f=json&returnGeometry=false`).then(r => r.json()),
+    ]).then(([zoneRes, bfeRes]) => {
+      const zone  = zoneRes.features?.[0]?.attributes ?? null
+      const bfeAt = bfeRes.features?.[0]?.attributes ?? null
+      setLoma({ loading: false, zone, bfeFt: bfeAt?.ELEV ?? null, error: false })
+    }).catch(() => setLoma({ loading: false, zone: null, bfeFt: null, error: true }))
+  }, [info.lng, info.lat])
+
+  const elevFt   = parseFloat(d.elevFt)
+  const bfeFt    = loma.bfeFt
+  const diff     = bfeFt != null ? (elevFt - bfeFt) : null
+  const aboveBfe = diff != null ? diff > 0 : null
+  const fldZone  = loma.zone?.FLD_ZONE ?? '—'
+  const isSfha   = loma.zone?.SFHA_TF === 'T' || ['A','AE','AO','AH','AR'].some(z => fldZone.startsWith(z))
+
+  const determination = aboveBfe === true
+    ? 'This property may qualify for a LOMA application.'
+    : aboveBfe === false
+    ? 'This property is below BFE — full MT-2 LOMR may be required.'
+    : null
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(5,14,28,0.88)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div style={{ background: '#0d1f3c', border: `1px solid ${C.accent}55`, borderRadius: 12, padding: '24px 22px', maxWidth: 380, width: '100%', position: 'relative' }}>
+        <button onClick={onClose} style={{ position: 'absolute', top: 12, right: 14, background: 'transparent', border: 'none', color: C.muted, fontSize: 18, cursor: 'pointer', lineHeight: 1, padding: '2px 6px', minHeight: 32, minWidth: 32 }}>✕</button>
+        <div style={{ color: C.accent, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 6 }}>LOMA PRE-ASSESSMENT</div>
+        <div style={{ color: C.muted, fontSize: 10, marginBottom: 16 }}>
+          {Math.abs(info.lat).toFixed(4)}° {info.lat >= 0 ? 'N' : 'S'} &nbsp; {Math.abs(info.lng).toFixed(4)}° {info.lng >= 0 ? 'E' : 'W'}
+        </div>
+        {loma.loading ? (
+          <div style={{ color: C.muted, fontSize: 12, textAlign: 'center', padding: '20px 0' }}>Querying FEMA NFHL…</div>
+        ) : loma.error ? (
+          <div style={{ color: C.warn, fontSize: 12, lineHeight: 1.6 }}>FEMA NFHL data unavailable. Consult the FEMA Map Service Center at msc.fema.gov.</div>
+        ) : (
+          <>
+            <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 14, marginBottom: 14 }}>
+              {[
+                ['Property Elevation (est.)', `${d.elevFt} ft NAVD88`, '#e2e8f0'],
+                ['FEMA BFE', bfeFt != null ? `${bfeFt} ft NAVD88` : 'Not in NFHL at this point', bfeFt != null ? '#e2e8f0' : C.muted],
+                ['Flood Zone', fldZone, C.accent],
+                ['SFHA', isSfha ? 'YES — Special Flood Hazard Area' : 'NO', isSfha ? C.err : C.ok],
+              ].map(([label, value, color]) => (
+                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 9, gap: 8 }}>
+                  <span style={{ color: C.muted, fontSize: 11, flexShrink: 0 }}>{label}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color, textAlign: 'right' }}>{value}</span>
+                </div>
+              ))}
+            </div>
+            {diff != null && (
+              <div style={{ background: (aboveBfe ? C.ok : C.err) + '18', border: `1px solid ${aboveBfe ? C.ok : C.err}44`, borderRadius: 6, padding: '10px 14px', marginBottom: 14 }}>
+                <div style={{ color: aboveBfe ? C.ok : C.err, fontSize: 12, fontWeight: 800, marginBottom: 4 }}>
+                  {aboveBfe ? `ABOVE BFE by ${diff.toFixed(1)} ft` : `BELOW BFE by ${Math.abs(diff).toFixed(1)} ft`}
+                </div>
+                {determination && <div style={{ color: '#cbd5e1', fontSize: 11, lineHeight: 1.6 }}>{determination}</div>}
+              </div>
+            )}
+            <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 12, color: C.warn, fontSize: 10, lineHeight: 1.65 }}>
+              ⚠ Full application requires licensed engineer review and stamp. Elevation data is approximate — certified field survey required for official submission.
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Inspection Popup (desktop) ────────────────────────────────────────────────
 function InspectionPopup({ info, cur, runResult, onClose }) {
   const d = deriveInspection(info, cur, runResult)
@@ -214,6 +289,7 @@ function InspectionSheet({ info, cur, runResult, onClose }) {
 }
 
 function PopupContent({ d, info }) {
+  const [showLoma, setShowLoma] = useState(false)
   const sep = { borderTop: `1px solid ${C.border}22`, margin: '10px 0' }
   const row = (label, value, color = '#e2e8f0') => (
     <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7, gap: 8 }}>
@@ -247,6 +323,18 @@ function PopupContent({ d, info }) {
           {row('Est. Time to Inundation', `~${d.tti} hrs`, C.err)}
         </>
       )}
+      {d.risk === 'HIGH' && (
+        <>
+          <div style={sep} />
+          <button
+            onClick={() => setShowLoma(true)}
+            style={{ width: '100%', background: C.accent + '18', color: C.accent, border: `1px solid ${C.accent}55`, borderRadius: 6, padding: '10px 14px', fontSize: 11, fontWeight: 700, cursor: 'pointer', letterSpacing: '0.05em', minHeight: 40 }}
+          >
+            LOMA Pre-Assessment
+          </button>
+        </>
+      )}
+      {showLoma && <LomaAssessment info={info} d={d} onClose={() => setShowLoma(false)} />}
     </div>
   )
 }
