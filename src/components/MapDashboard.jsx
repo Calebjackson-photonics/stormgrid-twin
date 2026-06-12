@@ -482,9 +482,9 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
   useEffect(() => {
     if (!mapLoaded || !map.current) return
     let mean = 0.01
-    if (isPreset && cur)                 mean = cur.lambdaMean
-    else if (selectedRun?.lambda_value)  mean = selectedRun.lambda_value
-    else if (runResult?.lambda_value)    mean = runResult.lambda_value
+    if (isPreset && cur)                                             mean = cur.lambdaMean
+    else if (selectedRun?.lambda_value)                              mean = selectedRun.lambda_value
+    else if (runResult?.lambda_irma_2017 ?? runResult?.lambda_value) mean = runResult.lambda_irma_2017 ?? runResult.lambda_value
     const bbox = activeBbox.current
     map.current.getSource('lambda-raster')?.updateImage({
       url: buildRasterDataUrl(mean),
@@ -492,7 +492,7 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
     })
     lookupRef.current = buildLookupGrid(mean, bbox)
     setClickInfo(null)
-  }, [mapLoaded, step, selectedValue, dbRuns])
+  }, [mapLoaded, step, selectedValue, dbRuns, runResult])
 
   // ── handleRun (accepts overrides for auto-run from address select) ──────────
   async function handleRun(overrides = {}) {
@@ -523,6 +523,7 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
             const out = await fetch(`${API}/outputs/${data.run_id}`, { headers: { 'X-API-Key': apiKey } })
             const od  = await out.json()
             setRunResult(od)
+            setSelectedValue(data.run_id)
             setRunTimestamp(new Date())
             const lv = od.lambda_value ?? od.lambda_irma_2017
             if (lv) {
