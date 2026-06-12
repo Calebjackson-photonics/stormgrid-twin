@@ -35,12 +35,14 @@ function buildRasterDataUrl(lambdaMean) {
       const cx = x / (W - 1)
       const cy = (H - 1 - y) / (H - 1)  // flip: y=0 = top = north
       const local = lambdaAt(cx, cy, lambdaMean)
-      const v = Math.min(1, local / 0.3)
+      // Color thresholds match legend: < 0.05 green · 0.05–0.15 yellow · > 0.15 red
       let r, g, b
-      if (v < 0.5) { const t = v / 0.5; r = Math.round(t * 255); g = 200; b = 0 }
-      else { const t = (v - 0.5) / 0.5; r = 255; g = Math.round((1 - t) * 200); b = 0 }
+      if (local < 0.05) { r = 0; g = 210; b = 80 }
+      else if (local < 0.15) { const t = (local - 0.05) / 0.10; r = Math.round(255 * t); g = Math.round(210 - 80 * t); b = 0 }
+      else { const t = Math.min(1, (local - 0.15) / 0.20); r = 255; g = Math.round(130 - 130 * t); b = 0 }
+      const alpha_v = Math.min(1, local / 0.30)
       const i = (y * W + x) * 4
-      d[i] = r; d[i+1] = g; d[i+2] = b; d[i+3] = Math.round(155 + v * 45)
+      d[i] = r; d[i+1] = g; d[i+2] = b; d[i+3] = Math.round(150 + alpha_v * 55)
     }
   }
   ctx.putImageData(img, 0, 0)
@@ -145,10 +147,11 @@ function deriveInspection(clickPt, cur, runResult) {
   // Urban density: east Jax more urban (cx proxy)
   const urbanFactor = (0.8 + (clickPt?.cx ?? 0.5) * 0.5).toFixed(2)
 
-  // Risk level
+  // Risk level — saturated soil or exceeded drainage cannot be Low
   let risk = 'LOW', riskColor = C.ok
   if (lambda > 0.15) { risk = 'HIGH'; riskColor = C.err }
   else if (lambda > 0.05) { risk = 'MEDIUM'; riskColor = C.warn }
+  if (risk === 'LOW' && (satPct >= 100 || drainage === 'Exceeded')) { risk = 'MEDIUM'; riskColor = C.warn }
 
   // Time to inundation (HIGH only)
   const tti = risk === 'HIGH' ? (12 / (lambda / 0.08)).toFixed(1) : null
@@ -196,12 +199,15 @@ function InspectionSheet({ info, cur, runResult, onClose }) {
       position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100,
       background: '#0d1f3c', borderTop: `2px solid ${C.border}`,
       borderRadius: '16px 16px 0 0',
-      padding: '8px 20px 32px',
+      padding: '8px 16px 32px',
       boxShadow: '0 -8px 32px rgba(0,0,0,0.7)',
       maxHeight: '70vh', overflowY: 'auto',
+      boxSizing: 'border-box',
     }}>
-      <div style={{ width: 40, height: 4, background: C.border, borderRadius: 2, margin: '0 auto 16px', cursor: 'pointer' }} onClick={onClose} />
-      <button onClick={onClose} style={{ position: 'absolute', top: 16, right: 16, background: 'transparent', border: 'none', color: C.muted, fontSize: 16, cursor: 'pointer' }}>✕</button>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', marginBottom: 14 }}>
+        <div style={{ width: 40, height: 4, background: C.border, borderRadius: 2, cursor: 'pointer' }} onClick={onClose} />
+        <button onClick={onClose} style={{ position: 'absolute', right: 0, background: 'transparent', border: 'none', color: C.muted, fontSize: 18, cursor: 'pointer', padding: '2px 6px', lineHeight: 1, minHeight: 32, minWidth: 32 }}>✕</button>
+      </div>
       <PopupContent d={d} info={info} />
     </div>
   )
@@ -210,9 +216,9 @@ function InspectionSheet({ info, cur, runResult, onClose }) {
 function PopupContent({ d, info }) {
   const sep = { borderTop: `1px solid ${C.border}22`, margin: '10px 0' }
   const row = (label, value, color = '#e2e8f0') => (
-    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7 }}>
-      <span style={{ color: C.muted, fontSize: 11 }}>{label}</span>
-      <span style={{ fontSize: 11, fontWeight: 700, color }}>{value}</span>
+    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7, gap: 8 }}>
+      <span style={{ color: C.muted, fontSize: 11, minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+      <span style={{ fontSize: 11, fontWeight: 700, color, flexShrink: 0 }}>{value}</span>
     </div>
   )
   return (
@@ -221,7 +227,7 @@ function PopupContent({ d, info }) {
         {Math.abs(info.lat).toFixed(4)}° {info.lat >= 0 ? 'N' : 'S'} &nbsp;
         {Math.abs(info.lng).toFixed(4)}° {info.lng >= 0 ? 'E' : 'W'}
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
         <div style={{ background: d.riskColor + '22', border: `1px solid ${d.riskColor}`, borderRadius: 4, padding: '3px 10px', color: d.riskColor, fontSize: 11, fontWeight: 800, letterSpacing: '0.08em' }}>
           {d.risk} RISK
         </div>
@@ -276,6 +282,7 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
   const [showFema, setShowFema]             = useState(false)
   const [clickInfo, setClickInfo]           = useState(null)
   const [showLayers, setShowLayers]         = useState(true)
+  const [showJlmInfo, setShowJlmInfo]       = useState(false)
 
   const isPreset    = Boolean(STORM_PRESETS[selectedValue])
   const preset      = STORM_PRESETS[selectedValue]
@@ -685,6 +692,33 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
         </div>
       )}
 
+      {/* JLM info modal */}
+      {showJlmInfo && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(5,14,28,0.92)', zIndex: 1001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: '#0d1f3c', border: `1px solid ${C.accent}55`, borderRadius: 12, padding: '28px 24px', maxWidth: 460, width: '100%', position: 'relative' }}>
+            <button onClick={() => setShowJlmInfo(false)} style={{ position: 'absolute', top: 14, right: 16, background: 'transparent', border: 'none', color: C.muted, fontSize: 18, cursor: 'pointer', lineHeight: 1, padding: '2px 6px', minHeight: 32, minWidth: 32 }}>✕</button>
+            <div style={{ color: C.accent, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 10 }}>ABOUT THIS METRIC</div>
+            <div style={{ color: '#e2e8f0', fontSize: 15, fontWeight: 700, marginBottom: 14 }}>Jackson Lambda Model (JLM Λ)</div>
+            <div style={{ color: '#94a3b8', fontSize: 13, lineHeight: 1.75, marginBottom: 20 }}>
+              Jackson Lambda Model (JLM Λ) — a proprietary physics-based flood index developed by Photonic Dynamics. Validated against 44 USGS high-water marks from Hurricane Matthew 2016, achieving a 63% improvement over baseline. Values above 0.15 indicate high inundation risk.
+            </div>
+            <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 16 }}>
+              {[
+                ['Formula',    'Λ = (elev_grad × precip_rate) / (soil_perm × channel_width)'],
+                ['High Risk',  'Λ > 0.15 — high inundation risk'],
+                ['Flooding',   'Λ ≥ 1.0 — active flood conditions'],
+                ['Validation', 'CSI 0.380 · Hurricane Matthew 2016 · 44 USGS HWMs'],
+              ].map(([k, v]) => (
+                <div key={k} style={{ display: 'flex', gap: 10, marginBottom: 9, alignItems: 'flex-start' }}>
+                  <span style={{ color: C.muted, fontSize: 11, fontWeight: 700, minWidth: 74, flexShrink: 0 }}>{k}</span>
+                  <span style={{ color: '#cbd5e1', fontSize: 11, fontFamily: k === 'Formula' ? 'monospace' : 'inherit', lineHeight: 1.5 }}>{v}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Sidebar — desktop always visible */}
       {!isMobile && sidebar}
 
@@ -759,8 +793,11 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
               </>
             ) : (
               <>
-                <div style={{ color: C.accent, fontWeight: 700, marginBottom: 4 }}>JLM Λ</div>
-                {[['< 0.05  Low', 'rgba(0,200,0,0.8)'], ['0.05–0.15  Medium', 'rgba(255,180,0,0.8)'], ['> 0.15  High', 'rgba(255,40,0,0.8)']].map(([l, c]) => (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 4 }}>
+                  <span style={{ color: C.accent, fontWeight: 700 }}>JLM Λ</span>
+                  <button onClick={() => setShowJlmInfo(true)} style={{ background: 'transparent', border: 'none', color: C.accent, cursor: 'pointer', padding: 0, fontSize: 13, lineHeight: 1, opacity: 0.85, minHeight: 'auto' }} title="About JLM Λ">ⓘ</button>
+                </div>
+                {[['< 0.05  Low', 'rgba(0,210,80,0.85)'], ['0.05–0.15  Medium', 'rgba(255,165,0,0.85)'], ['> 0.15  High', 'rgba(255,40,0,0.85)']].map(([l, c]) => (
                   <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
                     <div style={{ width: 12, height: 8, background: c, borderRadius: 2, flexShrink: 0 }} />
                     <span style={{ color: '#cbd5e1' }}>{l}</span>

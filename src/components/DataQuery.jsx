@@ -5,6 +5,22 @@ import LocationSearch from './LocationSearch'
 const API = 'https://api.getstormgrid.com'
 const C = { card: '#0d1f3c', border: '#1e3a5f', accent: '#06b6d4', muted: '#64748b', ok: '#22c55e', warn: '#f59e0b', err: '#ef4444' }
 
+const STORM_PRESETS_DQ = {
+  matthew:  { label: 'Hurricane Matthew 2016',   start: '2016-10-06', end: '2016-10-08' },
+  irma:     { label: 'Hurricane Irma 2017',      start: '2017-09-07', end: '2017-09-12' },
+  harvey:   { label: 'Hurricane Harvey 2017',    start: '2017-08-25', end: '2017-08-31' },
+  maria:    { label: 'Hurricane Maria 2017',     start: '2017-09-20', end: '2017-09-22' },
+  michael:  { label: 'Hurricane Michael 2018',   start: '2018-10-10', end: '2018-10-12' },
+  florence: { label: 'Hurricane Florence 2018',  start: '2018-09-14', end: '2018-09-16' },
+  dorian:   { label: 'Hurricane Dorian 2019',    start: '2019-09-01', end: '2019-09-06' },
+  sally:    { label: 'Hurricane Sally 2020',     start: '2020-09-14', end: '2020-09-16' },
+  ida:      { label: 'Hurricane Ida 2021',       start: '2021-08-29', end: '2021-08-31' },
+  ian:      { label: 'Hurricane Ian 2022',       start: '2022-09-26', end: '2022-09-30' },
+  nicole:   { label: 'Hurricane Nicole 2022',    start: '2022-11-09', end: '2022-11-11' },
+  idalia:   { label: 'Hurricane Idalia 2023',    start: '2023-08-29', end: '2023-08-31' },
+  debby:    { label: 'Hurricane Debby 2024',     start: '2024-08-04', end: '2024-08-08' },
+}
+
 const SOURCES = [
   { id: 'noaa_mrms',  label: 'NOAA MRMS',          desc: 'Multi-Radar Multi-Sensor precipitation (S3, token-free)' },
   { id: 'usgs_gauge', label: 'USGS Stream Gauge',   desc: 'NWIS instantaneous/daily stage height' },
@@ -41,15 +57,24 @@ function exportCsv(rows, filename) {
 }
 
 export default function DataQuery({ apiKey: apiKeyProp = 'sg_ent_demo' }) {
-  const [location, setLocation]     = useState('jacksonville')
+  const [location, setLocation]         = useState('jacksonville')
   const [locationBbox, setLocationBbox] = useState(null)
-  const [startDate, setStartDate] = useState('2016-10-06')
-  const [endDate, setEndDate]     = useState('2016-10-08')
+  const [stormPreset, setStormPreset]   = useState('matthew')
+  const [startDate, setStartDate]       = useState('2016-10-06')
+  const [endDate, setEndDate]           = useState('2016-10-08')
   const [selected, setSelected]   = useState(new Set(['noaa_mrms', 'usgs_gauge', 'ssurgo']))
   const [apiKey, setApiKey]       = useState(apiKeyProp)
   const [loading, setLoading]     = useState(false)
   const [results, setResults]     = useState(null)
   const [error, setError]         = useState('')
+
+  function handleStormPreset(key) {
+    setStormPreset(key)
+    if (key && STORM_PRESETS_DQ[key]) {
+      setStartDate(STORM_PRESETS_DQ[key].start)
+      setEndDate(STORM_PRESETS_DQ[key].end)
+    }
+  }
 
   function toggle(id) {
     setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -99,11 +124,23 @@ export default function DataQuery({ apiKey: apiKeyProp = 'sg_ent_demo' }) {
               />
             </div>
 
+            <label style={{ color: C.muted, fontSize: 11, display: 'block', marginBottom: 4 }}>Storm Preset</label>
+            <select
+              value={stormPreset}
+              onChange={e => handleStormPreset(e.target.value)}
+              style={{ width: '100%', background: '#1e3a5f', color: '#e2e8f0', border: `1px solid ${C.border}`, borderRadius: 4, padding: '7px 10px', fontSize: 12, marginBottom: 12, boxSizing: 'border-box', cursor: 'pointer' }}
+            >
+              <option value="">— Custom dates —</option>
+              {Object.entries(STORM_PRESETS_DQ).map(([key, p]) => (
+                <option key={key} value={key}>{p.label}</option>
+              ))}
+            </select>
+
             <label style={{ color: C.muted, fontSize: 11, display: 'block', marginBottom: 4 }}>Start Date</label>
-            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={{ width: '100%', background: '#1e3a5f', color: '#e2e8f0', border: `1px solid ${C.border}`, borderRadius: 4, padding: '7px 10px', fontSize: 12, marginBottom: 12, boxSizing: 'border-box' }} />
+            <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setStormPreset('') }} style={{ width: '100%', background: '#1e3a5f', color: '#e2e8f0', border: `1px solid ${C.border}`, borderRadius: 4, padding: '7px 10px', fontSize: 12, marginBottom: 12, boxSizing: 'border-box' }} />
 
             <label style={{ color: C.muted, fontSize: 11, display: 'block', marginBottom: 4 }}>End Date</label>
-            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={{ width: '100%', background: '#1e3a5f', color: '#e2e8f0', border: `1px solid ${C.border}`, borderRadius: 4, padding: '7px 10px', fontSize: 12, marginBottom: 12, boxSizing: 'border-box' }} />
+            <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setStormPreset('') }} style={{ width: '100%', background: '#1e3a5f', color: '#e2e8f0', border: `1px solid ${C.border}`, borderRadius: 4, padding: '7px 10px', fontSize: 12, marginBottom: 12, boxSizing: 'border-box' }} />
 
             <label style={{ color: C.muted, fontSize: 11, display: 'block', marginBottom: 4 }}>API Key</label>
             <input value={apiKey} onChange={e => setApiKey(e.target.value)} style={{ width: '100%', background: '#1e3a5f', color: '#e2e8f0', border: `1px solid ${C.border}`, borderRadius: 4, padding: '7px 10px', fontSize: 12, marginBottom: 16, boxSizing: 'border-box' }} />
