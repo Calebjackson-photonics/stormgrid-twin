@@ -15,11 +15,14 @@ const C = {
 
 // ── Shared spatial lambda function (raster + click lookup use same math) ──────
 function lambdaAt(cx, cy, mean) {
-  const noise = (
+  // Spatial variation ±30% of mean — stays within same risk category as mean.
+  // Old formula (0.3+1.5cx)*(0.5+0.9noise) ranged 0.15×–2.52×, causing
+  // heatmap pixels to show a different risk tier than the popup at that point.
+  const t = (
     Math.sin(cx * 12.3 + cy * 9.1) * 0.5 +
     Math.cos(cx * 7.4 - cy * 15.2) * 0.5
-  ) * 0.5 + 0.5
-  return Math.max(0, mean * (0.3 + 1.5 * cx) * (0.5 + 0.9 * noise))
+  ) * 0.5 + 0.5  // 0 → 1
+  return Math.max(0, mean * (0.70 + 0.60 * t))  // 0.70×–1.30× mean
 }
 
 // ── Smooth 256×256 raster → PNG data URL (GPU-interpolated by Mapbox) ─────────
