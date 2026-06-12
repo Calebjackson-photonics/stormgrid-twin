@@ -56,6 +56,25 @@ function exportCsv(rows, filename) {
   a.click()
 }
 
+function exportGeoJson(results, location, bbox) {
+  const props = { location: results?.location, start_date: results?.start_date, end_date: results?.end_date }
+  flattenSources(results?.sources).forEach(r => { props[r.field] = r.value })
+  const [w, s, e, n] = bbox || [-81.84, 30.10, -81.30, 30.58]
+  const gj = {
+    type: 'FeatureCollection',
+    generator: 'StormGrid Data Query',
+    features: [{
+      type: 'Feature',
+      geometry: { type: 'Polygon', coordinates: [[[w,s],[e,s],[e,n],[w,n],[w,s]]] },
+      properties: props,
+    }],
+  }
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(gj, null, 2)], { type: 'application/geo+json' }))
+  a.download = `stormgrid_query_${location}_${results?.start_date || 'data'}.geojson`
+  a.click()
+}
+
 export default function DataQuery({ apiKey: apiKeyProp = 'sg_ent_demo' }) {
   const [location, setLocation]         = useState('jacksonville')
   const [locationBbox, setLocationBbox] = useState(null)
@@ -167,12 +186,20 @@ export default function DataQuery({ apiKey: apiKeyProp = 'sg_ent_demo' }) {
 
         {/* Results */}
         <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
             <div style={{ color: C.accent, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em' }}>RESULTS</div>
             {results && (
-              <button onClick={() => exportCsv(resultRows, `stormgrid_${location}_${startDate}.csv`)} style={{ background: 'transparent', color: C.accent, border: `1px solid ${C.accent}`, borderRadius: 4, padding: '4px 12px', fontSize: 11, cursor: 'pointer' }}>
-                Export CSV
-              </button>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button onClick={() => exportCsv(resultRows, `stormgrid_${location}_${startDate}.csv`)} style={{ background: 'transparent', color: C.accent, border: `1px solid ${C.accent}`, borderRadius: 4, padding: '4px 12px', fontSize: 11, cursor: 'pointer' }}>
+                  Export CSV
+                </button>
+                <button onClick={() => exportGeoJson(results, location, locationBbox)} style={{ background: '#22c55e1a', color: '#22c55e', border: '1px solid #22c55e44', borderRadius: 4, padding: '4px 12px', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>
+                  ↓ GeoJSON
+                </button>
+                <button disabled title="GeoTIFF requires a full pipeline run — use Run Analysis" style={{ background: 'transparent', color: C.muted, border: `1px solid ${C.border}`, borderRadius: 4, padding: '4px 12px', fontSize: 11, cursor: 'not-allowed', opacity: 0.5 }}>
+                  ↓ GeoTIFF
+                </button>
+              </div>
             )}
           </div>
 

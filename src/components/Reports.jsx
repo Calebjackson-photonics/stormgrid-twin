@@ -551,10 +551,18 @@ export default function Reports() {
                         </span>
                       </td>
                       <td style={{ padding: '8px 12px 8px 0' }}>
-                        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', minWidth: 180 }}>
-                          {dels.length === 0
-                            ? <span style={{ color: C.muted, fontSize: 10 }}>—</span>
-                            : dels.map(d => dlButton(d))}
+                        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                          {(() => {
+                            const gj = dels.find(d => (d.file_type || '').toLowerCase().includes('geojson'))
+                            const gt = dels.find(d => (d.file_type || '').toLowerCase().match(/geotiff|tiff/))
+                            const pv = dels.find(d => (d.file_type || '').toLowerCase().includes('provenance'))
+                            if (!gj && !gt) return <span style={{ color: C.muted, fontSize: 10 }}>—</span>
+                            return <>
+                              {gj?.storage_url && <a href={gj.storage_url} target="_blank" rel="noopener noreferrer" style={{ color: '#22c55e', fontSize: 10, textDecoration: 'none', background: '#22c55e1a', border: '1px solid #22c55e44', borderRadius: 3, padding: '2px 7px', whiteSpace: 'nowrap' }}>↓ GeoJSON</a>}
+                              {gt?.storage_url && <a href={gt.storage_url} target="_blank" rel="noopener noreferrer" style={{ color: '#a78bfa', fontSize: 10, textDecoration: 'none', background: '#a78bfa1a', border: '1px solid #a78bfa44', borderRadius: 3, padding: '2px 7px', whiteSpace: 'nowrap' }}>↓ GeoTIFF</a>}
+                              {pv?.storage_url && <a href={pv.storage_url} target="_blank" rel="noopener noreferrer" style={{ color: C.warn, fontSize: 10, textDecoration: 'none', background: C.warn + '1a', border: `1px solid ${C.warn}44`, borderRadius: 3, padding: '2px 7px', whiteSpace: 'nowrap' }}>↓ Prov</a>}
+                            </>
+                          })()}
                         </div>
                       </td>
                       <td style={{ padding: '8px 0 8px 0' }}>
