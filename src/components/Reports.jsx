@@ -326,9 +326,11 @@ export default function Reports() {
   const [filter, setFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState(null)
 
-  useEffect(() => {
+  function loadData() {
     setLoading(true)
+    setFetchError(null)
     Promise.all([
       query('stormgrid_runs', { order: 'created_at', limit: 200 }),
       query('deliverables', { order: 'created_at', limit: 500 }),
@@ -336,8 +338,14 @@ export default function Reports() {
       setRuns(r)
       setDeliverables(d)
       setLoading(false)
+    }).catch(err => {
+      console.error('[Reports] fetch failed', err)
+      setFetchError(String(err))
+      setLoading(false)
     })
-  }, [])
+  }
+
+  useEffect(() => { loadData() }, [])
 
   const filtered = runs.filter(r => {
     if (filter === 'complete' && r.status !== 'complete') return false
@@ -411,9 +419,19 @@ export default function Reports() {
 
   return (
     <div>
-      <div style={{ marginBottom: 20 }}>
-        <h2 style={{ color: '#e2e8f0', fontSize: 18, fontWeight: 700, margin: '0 0 4px' }}>Reports</h2>
-        <p style={{ color: C.muted, fontSize: 12, margin: 0 }}>Full run history from stormgrid_runs — download GeoJSON, GeoTIFF, Provenance</p>
+      <div style={{ marginBottom: 20, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+        <div>
+          <h2 style={{ color: '#e2e8f0', fontSize: 18, fontWeight: 700, margin: '0 0 4px' }}>Reports</h2>
+          <p style={{ color: C.muted, fontSize: 12, margin: 0 }}>Full run history from stormgrid_runs — download GeoJSON, GeoTIFF, Provenance</p>
+          {fetchError && <p style={{ color: C.err, fontSize: 11, margin: '6px 0 0' }}>Fetch error: {fetchError}</p>}
+        </div>
+        <button
+          onClick={loadData}
+          disabled={loading}
+          style={{ background: 'transparent', color: loading ? C.muted : C.accent, border: `1px solid ${loading ? C.border : C.accent}`, borderRadius: 5, padding: '7px 14px', fontSize: 11, fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}
+        >
+          {loading ? 'Loading…' : '↺ Refresh'}
+        </button>
       </div>
 
       {/* Last run deliverables */}
@@ -444,7 +462,11 @@ export default function Reports() {
                   disabled
                   style={{ background: '#0a1628', color: C.muted, border: `1px solid ${C.border}`, borderRadius: 5, padding: '9px 18px', fontSize: 12, fontWeight: 600, cursor: 'not-allowed', whiteSpace: 'nowrap', minHeight: 44 }}
                 >
-                  Generating… ({spec.label.replace('Download ', '')})
+                  {lastCompleted.status === 'complete'
+                    ? (lastCompleted.tier === 'professional'
+                        ? `${spec.label.replace('Download ', '')} — Pro tier`
+                        : `${spec.label.replace('Download ', '')} — N/A`)
+                    : `Generating… (${spec.label.replace('Download ', '')})`}
                 </button>
               )
             })}
