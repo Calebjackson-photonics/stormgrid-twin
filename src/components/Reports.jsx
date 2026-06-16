@@ -407,7 +407,12 @@ export default function Reports() {
     precip_mm: r.precip_mm,
   }))
 
-  const lastCompleted = runs.find(r => r.status === 'complete')
+  const completedRuns  = runs.filter(r => r.status === 'complete')
+  const lastWithDels   = completedRuns.find(r => {
+    const rid = r.run_id || r.id
+    return deliverables.some(d => d.run_id === rid && d.storage_url)
+  })
+  const lastCompleted = lastWithDels || completedRuns[0] || null
   const lastRunId     = lastCompleted ? (lastCompleted.run_id || lastCompleted.id) : null
   const lastDels      = lastRunId ? deliverables.filter(d => d.run_id === lastRunId) : []
 
@@ -452,7 +457,7 @@ export default function Reports() {
                   href={del.storage_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  style={{ background: spec.color + '1a', color: spec.color, border: `1px solid ${spec.color}44`, borderRadius: 5, padding: '9px 18px', fontSize: 12, fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap', display: 'inline-block', minHeight: 44, display: 'flex', alignItems: 'center' }}
+                  style={{ background: spec.color + '33', color: '#ffffff', border: `1px solid ${spec.color}88`, borderRadius: 5, padding: '9px 18px', fontSize: 12, fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap', minHeight: 44, display: 'flex', alignItems: 'center' }}
                 >
                   ↓ {spec.label}
                 </a>
@@ -578,11 +583,11 @@ export default function Reports() {
                             const gj = dels.find(d => (d.file_type || '').toLowerCase().includes('geojson'))
                             const gt = dels.find(d => (d.file_type || '').toLowerCase().match(/geotiff|tiff/))
                             const pv = dels.find(d => (d.file_type || '').toLowerCase().includes('provenance'))
-                            if (!gj && !gt) return <span style={{ color: C.muted, fontSize: 10 }}>—</span>
+                            if (!gj && !gt && !pv) return <span style={{ color: C.muted, fontSize: 10 }}>—</span>
                             return <>
-                              {gj?.storage_url && <a href={gj.storage_url} target="_blank" rel="noopener noreferrer" style={{ color: '#22c55e', fontSize: 10, textDecoration: 'none', background: '#22c55e1a', border: '1px solid #22c55e44', borderRadius: 3, padding: '2px 7px', whiteSpace: 'nowrap' }}>↓ GeoJSON</a>}
-                              {gt?.storage_url && <a href={gt.storage_url} target="_blank" rel="noopener noreferrer" style={{ color: '#a78bfa', fontSize: 10, textDecoration: 'none', background: '#a78bfa1a', border: '1px solid #a78bfa44', borderRadius: 3, padding: '2px 7px', whiteSpace: 'nowrap' }}>↓ GeoTIFF</a>}
-                              {pv?.storage_url && <a href={pv.storage_url} target="_blank" rel="noopener noreferrer" style={{ color: C.warn, fontSize: 10, textDecoration: 'none', background: C.warn + '1a', border: `1px solid ${C.warn}44`, borderRadius: 3, padding: '2px 7px', whiteSpace: 'nowrap' }}>↓ Prov</a>}
+                              {gj?.storage_url && <a href={gj.storage_url} target="_blank" rel="noopener noreferrer" style={{ color: '#ffffff', fontSize: 10, textDecoration: 'none', background: '#22c55e33', border: '1px solid #22c55e88', borderRadius: 3, padding: '2px 7px', whiteSpace: 'nowrap' }}>↓ GeoJSON</a>}
+                              {gt?.storage_url && <a href={gt.storage_url} target="_blank" rel="noopener noreferrer" style={{ color: '#ffffff', fontSize: 10, textDecoration: 'none', background: '#a78bfa33', border: '1px solid #a78bfa88', borderRadius: 3, padding: '2px 7px', whiteSpace: 'nowrap' }}>↓ GeoTIFF</a>}
+                              {pv?.storage_url && <a href={pv.storage_url} target="_blank" rel="noopener noreferrer" style={{ color: '#ffffff', fontSize: 10, textDecoration: 'none', background: C.warn + '33', border: `1px solid ${C.warn}88`, borderRadius: 3, padding: '2px 7px', whiteSpace: 'nowrap' }}>↓ Prov</a>}
                             </>
                           })()}
                         </div>
