@@ -39,8 +39,8 @@ const FULL_STORM_LIBRARY = [
 
 // ── Spatial lambda math (identical to MapDashboard) ────────────────────────────
 function lambdaAt(cx, cy, mean) {
-  const noise = (Math.sin(cx * 12.3 + cy * 9.1) * 0.5 + Math.cos(cx * 7.4 - cy * 15.2) * 0.5) * 0.5 + 0.5
-  return Math.max(0, mean * (0.3 + 1.5 * cx) * (0.5 + 0.9 * noise))
+  const t = (Math.sin(cx * 12.3 + cy * 9.1) * 0.5 + Math.cos(cx * 7.4 - cy * 15.2) * 0.5) * 0.5 + 0.5
+  return Math.max(0, mean * (0.70 + 0.60 * t))
 }
 
 function computePeakLambda(lambdaMean) {

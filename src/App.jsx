@@ -206,7 +206,7 @@ export default function App() {
         <main style={{ padding: isMobile ? '16px 12px' : '28px 24px', maxWidth: activeTab === 'compare' ? '100%' : 1280, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
           {activeTab === 'query'    && <DataQuery    apiKey={session.key} />}
           {activeTab === 'adapters' && <AdapterHealth />}
-          {activeTab === 'reports'  && <Reports />}
+          {activeTab === 'reports'  && <Reports apiKey={session.key} />}
           {activeTab === 'compare'  && <StormComparison />}
           {activeTab === 'scour'    && <BridgeScour   apiKey={session.key} />}
           {activeTab === 'billing'  && <Billing />}

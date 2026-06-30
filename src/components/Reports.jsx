@@ -168,8 +168,8 @@ function openProvenanceReport(run, deliverables) {
 }
 
 function lambdaAt(cx, cy, mean) {
-  const noise = (Math.sin(cx * 12.3 + cy * 9.1) * 0.5 + Math.cos(cx * 7.4 - cy * 15.2) * 0.5) * 0.5 + 0.5
-  return Math.max(0, mean * (0.3 + 1.5 * cx) * (0.5 + 0.9 * noise))
+  const t = (Math.sin(cx * 12.3 + cy * 9.1) * 0.5 + Math.cos(cx * 7.4 - cy * 15.2) * 0.5) * 0.5 + 0.5
+  return Math.max(0, mean * (0.70 + 0.60 * t))
 }
 
 function generatePdfReport(run, deliverables, allRuns) {
@@ -327,7 +327,30 @@ const CRS_OPTIONS = [
   { value: '26917', label: 'UTM Zone 17N (EPSG:26917)' },
 ]
 
-export default function Reports() {
+async function downloadParquet(runId, crs, apiKey) {
+  try {
+    const res = await fetch(
+      `https://api.getstormgrid.com/api/export/parquet?run_id=${runId}&crs=${crs}`,
+      { headers: { 'X-API-Key': apiKey } }
+    )
+    if (!res.ok) {
+      const text = await res.text().catch(() => res.statusText)
+      alert(`GeoParquet download failed (${res.status}): ${text}`)
+      return
+    }
+    const blob = await res.blob()
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = `stormgrid_${runId.slice(0, 16)}_epsg${crs}.parquet`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    alert(`GeoParquet download error: ${err.message}`)
+  }
+}
+
+export default function Reports({ apiKey = 'sg_ent_demo' }) {
   const [runs, setRuns] = useState([])
   const [deliverables, setDeliverables] = useState([])
   const [filter, setFilter] = useState('all')
@@ -508,14 +531,12 @@ export default function Reports() {
               ↓ Export PDF Report
             </button>
             {lastRunId && (
-              <a
-                href={`https://api.getstormgrid.com/api/export/parquet?run_id=${lastRunId}&crs=${crs}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ background: '#7c3aed22', color: '#c4b5fd', border: '1px solid #7c3aed55', borderRadius: 5, padding: '9px 18px', fontSize: 12, fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap', minHeight: 44, display: 'flex', alignItems: 'center' }}
+              <button
+                onClick={() => downloadParquet(lastRunId, crs, apiKey)}
+                style={{ background: '#7c3aed22', color: '#c4b5fd', border: '1px solid #7c3aed55', borderRadius: 5, padding: '9px 18px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap', minHeight: 44 }}
               >
                 ↓ GeoParquet
-              </a>
+              </button>
             )}
           </div>
         </div>
@@ -756,14 +777,12 @@ export default function Reports() {
               </select>
             </div>
             {lastRunId ? (
-              <a
-                href={`https://api.getstormgrid.com/api/export/parquet?run_id=${lastRunId}&crs=${crs}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ display: 'block', textAlign: 'center', background: '#7c3aed22', color: '#c4b5fd', border: '1px solid #7c3aed55', borderRadius: 4, padding: '8px', fontSize: 11, fontWeight: 700, textDecoration: 'none', minHeight: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              <button
+                onClick={() => downloadParquet(lastRunId, crs, apiKey)}
+                style={{ width: '100%', background: '#7c3aed22', color: '#c4b5fd', border: '1px solid #7c3aed55', borderRadius: 4, padding: '8px', fontSize: 11, fontWeight: 700, cursor: 'pointer', minHeight: 36 }}
               >
                 ↓ Download GeoParquet
-              </a>
+              </button>
             ) : (
               <div style={{ color: C.muted, fontSize: 11, textAlign: 'center' }}>Run a pipeline to enable</div>
             )}
