@@ -846,6 +846,17 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
                 onChange={handleAddressSelect}
                 inputStyle={{ background: 'transparent', color: '#e2e8f0', border: 'none', padding: '4px 0', fontSize: 13, width: '100%', boxSizing: 'border-box' }}
               />
+              {location && !isRunning && (
+                <button
+                  onClick={() => handleRun({ location, bbox: locationBbox })}
+                  style={{ marginTop: 8, width: '100%', background: C.accent, color: '#0a1628', border: 'none', borderRadius: 5, padding: '10px', fontSize: 12, fontWeight: 800, cursor: 'pointer', letterSpacing: '0.04em', minHeight: 44 }}
+                >
+                  ▶ RUN ANALYSIS
+                </button>
+              )}
+              {isRunning && (
+                <div style={{ marginTop: 8, textAlign: 'center', color: C.muted, fontSize: 11 }}>Running pipeline…</div>
+              )}
             </div>
           </div>
 

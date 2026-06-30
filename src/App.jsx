@@ -7,6 +7,7 @@ import AdapterHealth from './components/AdapterHealth'
 import Reports from './components/Reports'
 import StormComparison from './components/StormComparison'
 import Billing from './components/Billing'
+import BridgeScour from './components/BridgeScour'
 import Landing from './components/Landing'
 import TermsOfService from './components/TermsOfService'
 
@@ -16,6 +17,7 @@ const TABS = [
   { id: 'adapters', label: 'Adapter Health' },
   { id: 'reports',  label: 'Reports' },
   { id: 'compare',  label: 'Storm Comparison' },
+  { id: 'scour',    label: 'Bridge Scour' },
   { id: 'billing',  label: 'Billing' },
 ]
 
@@ -206,6 +208,7 @@ export default function App() {
           {activeTab === 'adapters' && <AdapterHealth />}
           {activeTab === 'reports'  && <Reports />}
           {activeTab === 'compare'  && <StormComparison />}
+          {activeTab === 'scour'    && <BridgeScour   apiKey={session.key} />}
           {activeTab === 'billing'  && <Billing />}
         </main>
       )}

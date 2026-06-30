@@ -320,6 +320,13 @@ function generatePdfReport(run, deliverables, allRuns) {
   if (w) { w.document.write(html); w.document.close() }
 }
 
+const CRS_OPTIONS = [
+  { value: '4326',  label: 'WGS84 (EPSG:4326)' },
+  { value: '3857',  label: 'Web Mercator (EPSG:3857)' },
+  { value: '2236',  label: 'State Plane FL East (EPSG:2236)' },
+  { value: '26917', label: 'UTM Zone 17N (EPSG:26917)' },
+]
+
 export default function Reports() {
   const [runs, setRuns] = useState([])
   const [deliverables, setDeliverables] = useState([])
@@ -327,6 +334,15 @@ export default function Reports() {
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState(null)
+  const [crs, setCrs]             = useState('4326')
+  const [wmsStatus, setWmsStatus] = useState(null)
+  const [copiedUrl, setCopiedUrl] = useState(null)
+
+  useEffect(() => {
+    fetch('https://api.getstormgrid.com/api/wms?SERVICE=WMS&REQUEST=GetCapabilities')
+      .then(r => setWmsStatus(r.ok ? 'live' : 'error'))
+      .catch(() => setWmsStatus('error'))
+  }, [])
 
   function loadData() {
     setLoading(true)
@@ -443,10 +459,20 @@ export default function Reports() {
       {!loading && lastCompleted && (
         <div style={{ background: C.card, border: `1px solid ${C.ok}44`, borderRadius: 8, padding: 20, marginBottom: 24 }}>
           <div style={{ color: C.ok, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 4 }}>LAST COMPLETED RUN — DELIVERABLES</div>
-          <div style={{ color: C.muted, fontSize: 11, marginBottom: 14 }}>
+          <div style={{ color: C.muted, fontSize: 11, marginBottom: 10 }}>
             {lastCompleted.location?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
             {' · '}
             <span style={{ fontFamily: 'monospace', fontSize: 10 }}>{lastRunId?.slice(0, 28)}</span>
+          </div>
+          <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ color: C.muted, fontSize: 10, fontWeight: 700 }}>EXPORT CRS:</span>
+            <select
+              value={crs}
+              onChange={e => setCrs(e.target.value)}
+              style={{ background: '#111e36', color: '#e2e8f0', border: `1px solid ${C.border}`, borderRadius: 4, padding: '5px 8px', fontSize: 11 }}
+            >
+              {CRS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             {DL_SPECS.map(spec => {
@@ -481,6 +507,16 @@ export default function Reports() {
             >
               ↓ Export PDF Report
             </button>
+            {lastRunId && (
+              <a
+                href={`https://api.getstormgrid.com/api/export/parquet?run_id=${lastRunId}&crs=${crs}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ background: '#7c3aed22', color: '#c4b5fd', border: '1px solid #7c3aed55', borderRadius: 5, padding: '9px 18px', fontSize: 12, fontWeight: 700, textDecoration: 'none', whiteSpace: 'nowrap', minHeight: 44, display: 'flex', alignItems: 'center' }}
+              >
+                ↓ GeoParquet
+              </a>
+            )}
           </div>
         </div>
       )}
@@ -628,6 +664,126 @@ export default function Reports() {
               </div>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* ArcGIS / WMS Integration Panel */}
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, padding: 20, marginTop: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+          <div style={{ color: C.accent, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em' }}>ARCGIS / WMS INTEGRATION</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginLeft: 'auto' }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: wmsStatus === 'live' ? C.ok : wmsStatus === 'error' ? C.err : C.muted }} />
+            <span style={{ color: C.muted, fontSize: 10 }}>
+              {wmsStatus === 'live' ? 'WMS Live' : wmsStatus === 'error' ? 'WMS Error' : 'WMS Checking…'}
+            </span>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
+          {/* OGC WMS */}
+          <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 14 }}>
+            <div style={{ color: '#e2e8f0', fontSize: 12, fontWeight: 700, marginBottom: 4 }}>OGC WMS 1.3.0</div>
+            <div style={{ color: C.muted, fontSize: 10, marginBottom: 8 }}>Paste into ArcGIS Online, QGIS, or MapInfo</div>
+            <div style={{ background: '#111e36', borderRadius: 4, padding: '8px 10px', fontFamily: 'monospace', fontSize: 10, color: C.accent, wordBreak: 'break-all', marginBottom: 8 }}>
+              https://api.getstormgrid.com/api/wms?SERVICE=WMS&REQUEST=GetCapabilities
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText('https://api.getstormgrid.com/api/wms?SERVICE=WMS&REQUEST=GetCapabilities')
+                  setCopiedUrl('wms')
+                  setTimeout(() => setCopiedUrl(null), 2000)
+                }}
+                style={{ background: copiedUrl === 'wms' ? C.ok + '33' : 'transparent', color: copiedUrl === 'wms' ? C.ok : C.accent, border: `1px solid ${copiedUrl === 'wms' ? C.ok : C.accent}44`, borderRadius: 4, padding: '6px 12px', fontSize: 11, fontWeight: 700, cursor: 'pointer', minHeight: 36 }}
+              >
+                {copiedUrl === 'wms' ? '✓ Copied' : '⎘ Copy URL'}
+              </button>
+              <a
+                href="https://www.arcgis.com/home/webmap/viewer.html?url=https://api.getstormgrid.com/api/wms&type=wms"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ background: 'transparent', color: C.muted, border: `1px solid ${C.border}`, borderRadius: 4, padding: '6px 12px', fontSize: 11, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', minHeight: 36 }}
+              >
+                Test in ArcGIS Online ↗
+              </a>
+            </div>
+          </div>
+
+          {/* Esri REST Feature Service */}
+          {lastRunId && (
+            <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 14 }}>
+              <div style={{ color: '#e2e8f0', fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Esri REST Feature Service</div>
+              <div style={{ color: C.muted, fontSize: 10, marginBottom: 8 }}>Add to ArcGIS Pro as a Feature Layer</div>
+              <div style={{ background: '#111e36', borderRadius: 4, padding: '8px 10px', fontFamily: 'monospace', fontSize: 10, color: C.accent, wordBreak: 'break-all', marginBottom: 8 }}>
+                {`https://api.getstormgrid.com/api/arcgis/featureservice/${lastRunId}`}
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(`https://api.getstormgrid.com/api/arcgis/featureservice/${lastRunId}`)
+                    setCopiedUrl('esri')
+                    setTimeout(() => setCopiedUrl(null), 2000)
+                  }}
+                  style={{ background: copiedUrl === 'esri' ? C.ok + '33' : 'transparent', color: copiedUrl === 'esri' ? C.ok : C.accent, border: `1px solid ${copiedUrl === 'esri' ? C.ok : C.accent}44`, borderRadius: 4, padding: '6px 12px', fontSize: 11, fontWeight: 700, cursor: 'pointer', minHeight: 36 }}
+                >
+                  {copiedUrl === 'esri' ? '✓ Copied' : '⎘ Copy URL'}
+                </button>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(`https://api.getstormgrid.com/api/arcgis/featureservice/${lastRunId}/query`)
+                    setCopiedUrl('esri-query')
+                    setTimeout(() => setCopiedUrl(null), 2000)
+                  }}
+                  style={{ background: 'transparent', color: C.muted, border: `1px solid ${C.border}`, borderRadius: 4, padding: '6px 12px', fontSize: 11, cursor: 'pointer', minHeight: 36 }}
+                >
+                  {copiedUrl === 'esri-query' ? '✓ Copied' : '⎘ /query'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* GeoParquet */}
+          <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 14 }}>
+            <div style={{ color: '#e2e8f0', fontSize: 12, fontWeight: 700, marginBottom: 4 }}>GeoParquet 1.0 Export</div>
+            <div style={{ color: C.muted, fontSize: 10, marginBottom: 8 }}>Cloud-native geospatial format · Enterprise/Municipal</div>
+            <div style={{ marginBottom: 8 }}>
+              <select
+                value={crs}
+                onChange={e => setCrs(e.target.value)}
+                style={{ background: '#111e36', color: '#e2e8f0', border: `1px solid ${C.border}`, borderRadius: 4, padding: '5px 8px', fontSize: 11, width: '100%' }}
+              >
+                {CRS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            {lastRunId ? (
+              <a
+                href={`https://api.getstormgrid.com/api/export/parquet?run_id=${lastRunId}&crs=${crs}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ display: 'block', textAlign: 'center', background: '#7c3aed22', color: '#c4b5fd', border: '1px solid #7c3aed55', borderRadius: 4, padding: '8px', fontSize: 11, fontWeight: 700, textDecoration: 'none', minHeight: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                ↓ Download GeoParquet
+              </a>
+            ) : (
+              <div style={{ color: C.muted, fontSize: 11, textAlign: 'center' }}>Run a pipeline to enable</div>
+            )}
+          </div>
+
+          {/* Integration Guide */}
+          <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: 14 }}>
+            <div style={{ color: '#e2e8f0', fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Integration Guide</div>
+            <div style={{ color: C.muted, fontSize: 10, lineHeight: 1.65, marginBottom: 10 }}>
+              Step-by-step setup for ArcGIS Online, ArcGIS Pro, QGIS, and MapInfo. Includes WMS layer configuration, CRS settings, and symbology tips.
+            </div>
+            <a
+              href="https://getstormgrid.com/arcgis"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ display: 'inline-block', color: C.accent, fontSize: 11, fontWeight: 700, textDecoration: 'none' }}
+            >
+              View ArcGIS Integration Guide ↗
+            </a>
+          </div>
         </div>
       </div>
     </div>
