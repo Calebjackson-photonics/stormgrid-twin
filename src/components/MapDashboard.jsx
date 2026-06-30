@@ -343,7 +343,7 @@ function PopupContent({ d, info }) {
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
-export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNavigateToBilling }) {
+export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', tier = 'professional', onNavigateToBilling }) {
   const isMobile     = useIsMobile()
   const mapContainer = useRef(null)
   const map          = useRef(null)
@@ -374,6 +374,12 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
   const [clickInfo, setClickInfo]           = useState(null)
   const [showLayers, setShowLayers]         = useState(true)
   const [showJlmInfo, setShowJlmInfo]       = useState(false)
+  const [aiSummary, setAiSummary]           = useState(null)
+  const [aiLoading, setAiLoading]           = useState(false)
+  const [aiError, setAiError]               = useState(null)
+  const [aiOpen, setAiOpen]                 = useState(true)
+  const [aiQuestion, setAiQuestion]         = useState('')
+  const [aiAnswer, setAiAnswer]             = useState(null)
 
   const isPreset    = Boolean(STORM_PRESETS[selectedValue])
   const preset      = STORM_PRESETS[selectedValue]
@@ -503,6 +509,7 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
     const bbox = 'bbox' in overrides ? overrides.bbox : locationBbox
     const scenarioLabel = STORM_PRESETS[selectedValue]?.label ?? `${loc} run`
     setIsRunning(true); setRunResult(null); setRunStatus('queued'); setClickInfo(null)
+    setAiSummary(null); setAiError(null); setAiAnswer(null); setAiOpen(true)
     setActiveScenario(scenarioLabel)
     try {
       const res = await fetch(`${API}/run`, {
@@ -528,6 +535,7 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
             setRunResult(od)
             setSelectedValue(data.run_id)
             setRunTimestamp(new Date())
+            fetchAiSummary(data.run_id)
             const lv = od.lambda_value ?? od.lambda_irma_2017
             if (lv) {
               const bb = bbox ?? DUVAL_BBOX
@@ -569,6 +577,34 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
         }
       }, 4000)
     } catch (e) { setRunStatus(`Error: ${e.message}`); setIsRunning(false) }
+  }
+
+  // ── AI summary fetch ──────────────────────────────────────────────────────────
+  async function fetchAiSummary(runId, regenerate = false, question = null) {
+    setAiLoading(true)
+    setAiError(null)
+    try {
+      const body = { run_id: runId }
+      if (regenerate) body.regenerate = true
+      if (question) body.question = question
+      const res = await fetch(`${API}/api/agent/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (data.error && !data.summary) {
+        setAiError('AI summary temporarily unavailable')
+      } else if (question) {
+        setAiAnswer(data.answer || data.summary || 'No answer returned.')
+      } else {
+        setAiSummary(data)
+      }
+    } catch {
+      setAiError('AI summary temporarily unavailable')
+    } finally {
+      setAiLoading(false)
+    }
   }
 
   // ── Address select → fly + auto-run ──────────────────────────────────────────
@@ -714,6 +750,99 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', onNav
                 <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{v}</span>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* AI Summary card — shown after run completes */}
+        {runResult && (
+          <div style={{ background: '#0a1628', border: `1px solid ${C.accent}22`, borderRadius: 6, overflow: 'hidden' }}>
+            <button
+              onClick={() => setAiOpen(o => !o)}
+              style={{ width: '100%', background: 'transparent', border: 'none', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: C.accent, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em' }}>AI ANALYSIS</span>
+                <span style={{ background: '#a78bfa22', color: '#a78bfa', border: '1px solid #a78bfa44', borderRadius: 3, fontSize: 9, fontWeight: 700, padding: '1px 6px', letterSpacing: '0.05em' }}>Claude</span>
+              </div>
+              <span style={{ color: C.muted, fontSize: 11 }}>{aiOpen ? '▲' : '▼'}</span>
+            </button>
+
+            {aiOpen && (
+              <div style={{ padding: '0 14px 14px' }}>
+                {aiLoading && (
+                  <div className="sg-pulse" style={{ color: C.muted, fontSize: 11, textAlign: 'center', padding: '12px 0' }}>
+                    Analyzing with Claude…
+                  </div>
+                )}
+                {aiError && !aiLoading && (
+                  <div style={{ color: C.warn, fontSize: 11, lineHeight: 1.6 }}>{aiError}</div>
+                )}
+                {aiSummary && !aiLoading && (
+                  <>
+                    <div style={{ color: '#e2e8f0', fontSize: 12, lineHeight: 1.75, marginBottom: 10 }}>{aiSummary.summary}</div>
+
+                    {aiSummary.pe_implications && (
+                      <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 10, marginBottom: 10 }}>
+                        <div style={{ color: C.accent, fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 5 }}>PE IMPLICATIONS</div>
+                        <div style={{ color: '#cbd5e1', fontSize: 11, lineHeight: 1.65 }}>{aiSummary.pe_implications}</div>
+                      </div>
+                    )}
+
+                    {aiSummary.hec18_narration && (
+                      <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 10, marginBottom: 10 }}>
+                        <div style={{ color: C.accent, fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 5 }}>HEC-18 CONTEXT</div>
+                        <div style={{ color: '#cbd5e1', fontSize: 11, lineHeight: 1.65 }}>{aiSummary.hec18_narration}</div>
+                      </div>
+                    )}
+
+                    {aiSummary.confidence_caveat && (
+                      <div style={{ color: C.muted, fontSize: 10, lineHeight: 1.55, fontStyle: 'italic', marginBottom: 10 }}>{aiSummary.confidence_caveat}</div>
+                    )}
+
+                    <button
+                      onClick={() => fetchAiSummary(runResult.run_id, true)}
+                      style={{ background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 4, color: C.muted, padding: '5px 10px', fontSize: 10, cursor: 'pointer', marginBottom: tier !== 'professional' ? 10 : 0 }}
+                    >
+                      Regenerate
+                    </button>
+
+                    {tier !== 'professional' && (
+                      <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
+                        <div style={{ color: C.accent, fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 6 }}>ASK A FOLLOW-UP</div>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <input
+                            value={aiQuestion}
+                            onChange={e => setAiQuestion(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter' && aiQuestion.trim()) {
+                                fetchAiSummary(runResult.run_id, false, aiQuestion)
+                                setAiQuestion('')
+                              }
+                            }}
+                            placeholder="Ask about this run…"
+                            style={{ flex: 1, background: '#0d1f3c', border: `1px solid ${C.border}`, borderRadius: 4, color: '#e2e8f0', padding: '6px 10px', fontSize: 11, outline: 'none', minHeight: 32 }}
+                          />
+                          <button
+                            onClick={() => {
+                              if (aiQuestion.trim()) {
+                                fetchAiSummary(runResult.run_id, false, aiQuestion)
+                                setAiQuestion('')
+                              }
+                            }}
+                            style={{ background: C.accent, border: 'none', borderRadius: 4, color: '#0a1628', padding: '6px 12px', fontSize: 11, fontWeight: 700, cursor: 'pointer', minHeight: 32 }}
+                          >
+                            Ask
+                          </button>
+                        </div>
+                        {aiAnswer && (
+                          <div style={{ marginTop: 10, color: '#cbd5e1', fontSize: 11, lineHeight: 1.65, borderLeft: `2px solid ${C.accent}44`, paddingLeft: 10, paddingTop: 4, paddingBottom: 4 }}>{aiAnswer}</div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
           </div>
         )}
 
