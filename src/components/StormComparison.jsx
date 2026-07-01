@@ -69,9 +69,10 @@ function buildRasterDataUrl(lambdaMean) {
       const cx = x / (W - 1), cy = (H - 1 - y) / (H - 1)
       const local = lambdaAt(cx, cy, lambdaMean)
       let r, g, b
-      if (local < 0.05) { r = 0; g = 210; b = 80 }
-      else if (local < 0.15) { const t = (local - 0.05) / 0.10; r = Math.round(255 * t); g = Math.round(210 - 80 * t); b = 0 }
-      else { const t = Math.min(1, (local - 0.15) / 0.20); r = 255; g = Math.round(130 - 130 * t); b = 0 }
+      if (local < 0.3)       { r = 0; g = 210; b = 80 }
+      else if (local < 0.7)  { const t = (local - 0.3) / 0.4; r = Math.round(255 * t); g = Math.round(200 - 160 * t); b = 0 }
+      else if (local < 1.0)  { r = 255; g = Math.round(50 * (1 - (local - 0.7) / 0.3)); b = 0 }
+      else                   { r = 180; g = 0; b = 200 }
       const alpha_v = Math.min(1, local / 0.30)
       // Edge vignette — fade 8% margin at each edge to hide hard bbox boundary
       const fade = Math.min(cx / 0.08, (1 - cx) / 0.08, cy / 0.08, (1 - cy) / 0.08, 1.0)
@@ -135,18 +136,19 @@ function deriveInspection(clickPt, stormInfo) {
   const elevFt      = (2 + (clickPt?.cy ?? 0.5) * 13).toFixed(1)
   const urbanFactor = (0.8 + (clickPt?.cx ?? 0.5) * 0.5).toFixed(2)
 
-  // Risk — saturated soil / exceeded drainage cannot be Low
+  // Risk — thresholds aligned with Λ=1 flooding boundary
   let risk = 'LOW', riskColor = C.ok
-  if (lambda > 0.15)      { risk = 'HIGH';   riskColor = C.err }
-  else if (lambda > 0.05) { risk = 'MEDIUM'; riskColor = C.warn }
-  if (risk === 'LOW' && (satPct >= 100 || drainage === 'Exceeded')) { risk = 'MEDIUM'; riskColor = C.warn }
+  if (lambda >= 1.0)    { risk = 'FLOODING';  riskColor = '#a855f7' }
+  else if (lambda >= 0.7) { risk = 'HIGH';    riskColor = C.err }
+  else if (lambda >= 0.3) { risk = 'MODERATE'; riskColor = C.warn }
+  if (risk === 'LOW' && (satPct >= 100 || drainage === 'Exceeded')) { risk = 'MODERATE'; riskColor = C.warn }
 
   // Stage: scale peak stage by local lambda / displayLambda ratio
   const peakLambda = stormInfo?.displayLambda ?? stormInfo?.lambda ?? 0.10
   const peakStage  = stormInfo?.stageFt ?? null
   const stageFt    = peakStage ? (Math.min(lambda / Math.max(peakLambda, 0.01), 1.5) * peakStage).toFixed(2) : null
 
-  const tti = risk === 'HIGH' ? (12 / (lambda / 0.08)).toFixed(1) : null
+  const tti = (risk === 'HIGH' || risk === 'FLOODING') ? (12 / (lambda / 0.08)).toFixed(1) : null
   return { lambda, satPct, precipIn, drainage, elevFt, urbanFactor, risk, riskColor, stageFt, tti }
 }
 
@@ -434,17 +436,17 @@ export default function StormComparison() {
   function InfoBadges({ info, peakLambda }) {
     if (!info) return null
     const displayVal = peakLambda ?? info.lambda
-    const regime = displayVal != null ? (displayVal >= 1 ? 'COMPRESSION' : 'RADIATIVE') : info.regime
+    const isFlooding = displayVal != null ? displayVal >= 1 : info.regime === 'FLOODING'
+    const regime = isFlooding ? 'FLOODING' : 'RADIATIVE'
+    const badgeColor = isFlooding ? '#a855f7' : C.ok
     return (
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         {displayVal != null && (
           <span style={{ color: C.accent, fontSize: 11, fontWeight: 700 }}>Λ peak {Number(displayVal).toFixed(4)}</span>
         )}
-        {regime && (
-          <span style={{ background: (regime === 'COMPRESSION' ? C.err : C.ok) + '22', color: regime === 'COMPRESSION' ? C.err : C.ok, border: `1px solid ${(regime === 'COMPRESSION' ? C.err : C.ok)}44`, borderRadius: 3, fontSize: 9, fontWeight: 700, padding: '2px 5px' }}>
-            {regime}
-          </span>
-        )}
+        <span style={{ background: badgeColor + '22', color: badgeColor, border: `2px solid ${badgeColor}`, borderRadius: 5, fontSize: 11, fontWeight: 800, padding: '3px 10px', letterSpacing: '0.05em' }}>
+          {regime}
+        </span>
       </div>
     )
   }
@@ -481,16 +483,17 @@ export default function StormComparison() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
         <span style={{ color: C.muted, fontSize: 10, fontWeight: 700, letterSpacing: '0.08em' }}>LAMBDA SCALE</span>
         {[
-          { label: 'LOW  Λ < 0.05',  color: 'rgba(0,210,80,0.85)' },
-          { label: 'MED  0.05–0.15', color: 'rgba(255,165,0,0.85)' },
-          { label: 'HIGH  Λ > 0.15', color: 'rgba(255,40,0,0.85)' },
+          { label: 'LOW   Λ < 0.3',    color: 'rgba(0,210,80,0.85)' },
+          { label: 'MOD   0.3–0.7',    color: 'rgba(255,140,0,0.85)' },
+          { label: 'HIGH  0.7–1.0',    color: 'rgba(255,30,0,0.85)' },
+          { label: 'FLOODING  ≥ 1.0',  color: 'rgba(180,0,200,0.85)' },
         ].map(l => (
           <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <div style={{ width: 12, height: 12, borderRadius: 2, background: l.color }} />
             <span style={{ color: C.muted, fontSize: 10 }}>{l.label}</span>
           </div>
         ))}
-        <span style={{ color: C.muted, fontSize: 10, marginLeft: 'auto' }}>Λ ≥ 1 = FLOODING · Λ &lt; 1 = RADIATIVE</span>
+        <span style={{ color: '#a855f7', fontSize: 10, fontWeight: 700, marginLeft: 'auto' }}>Λ ≥ 1 = FLOODING · Λ &lt; 1 = RADIATIVE</span>
       </div>
 
       {/* Dual maps */}

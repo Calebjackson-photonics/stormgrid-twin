@@ -38,11 +38,12 @@ function buildRasterDataUrl(lambdaMean) {
       const cx = x / (W - 1)
       const cy = (H - 1 - y) / (H - 1)  // flip: y=0 = top = north
       const local = lambdaAt(cx, cy, lambdaMean)
-      // Color thresholds match legend: < 0.05 green · 0.05–0.15 yellow · > 0.15 red
+      // Thresholds aligned with Λ=1 flooding threshold: green<0.3, orange 0.3–0.7, red 0.7–1.0, purple ≥1.0
       let r, g, b
-      if (local < 0.05) { r = 0; g = 210; b = 80 }
-      else if (local < 0.15) { const t = (local - 0.05) / 0.10; r = Math.round(255 * t); g = Math.round(210 - 80 * t); b = 0 }
-      else { const t = Math.min(1, (local - 0.15) / 0.20); r = 255; g = Math.round(130 - 130 * t); b = 0 }
+      if (local < 0.3)       { r = 0; g = 210; b = 80 }
+      else if (local < 0.7)  { const t = (local - 0.3) / 0.4; r = Math.round(255 * t); g = Math.round(200 - 160 * t); b = 0 }
+      else if (local < 1.0)  { r = 255; g = Math.round(50 * (1 - (local - 0.7) / 0.3)); b = 0 }
+      else                   { r = 180; g = 0; b = 200 }
       const alpha_v = Math.min(1, local / 0.30)
       const i = (y * W + x) * 4
       d[i] = r; d[i+1] = g; d[i+2] = b; d[i+3] = Math.round(150 + alpha_v * 55)
@@ -150,14 +151,15 @@ function deriveInspection(clickPt, cur, runResult) {
   // Urban density: east Jax more urban (cx proxy)
   const urbanFactor = (0.8 + (clickPt?.cx ?? 0.5) * 0.5).toFixed(2)
 
-  // Risk level — saturated soil or exceeded drainage cannot be Low
+  // Risk level — thresholds aligned with Λ=1 flooding boundary
   let risk = 'LOW', riskColor = C.ok
-  if (lambda > 0.15) { risk = 'HIGH'; riskColor = C.err }
-  else if (lambda > 0.05) { risk = 'MEDIUM'; riskColor = C.warn }
-  if (risk === 'LOW' && (satPct >= 100 || drainage === 'Exceeded')) { risk = 'MEDIUM'; riskColor = C.warn }
+  if (lambda >= 1.0)    { risk = 'FLOODING';  riskColor = '#a855f7' }
+  else if (lambda >= 0.7) { risk = 'HIGH';    riskColor = C.err }
+  else if (lambda >= 0.3) { risk = 'MODERATE'; riskColor = C.warn }
+  if (risk === 'LOW' && (satPct >= 100 || drainage === 'Exceeded')) { risk = 'MODERATE'; riskColor = C.warn }
 
-  // Time to inundation (HIGH only)
-  const tti = risk === 'HIGH' ? (12 / (lambda / 0.08)).toFixed(1) : null
+  // Time to inundation (HIGH + FLOODING)
+  const tti = (risk === 'HIGH' || risk === 'FLOODING') ? (12 / (lambda / 0.08)).toFixed(1) : null
 
   // Stage
   const stageFt = runResult?.peak_lambda?.gauge_stage_ft ?? cur?.stage ?? null
@@ -733,12 +735,21 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', tier 
         {runResult && (
           <div style={{ background: '#0a1628', border: `1px solid ${C.ok}33`, borderRadius: 6, padding: 14 }}>
             <div style={{ color: C.ok, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 10 }}>RESULT</div>
-            <div style={{ color: C.accent, fontSize: 26, fontWeight: 800, marginBottom: 2 }}>
+            <div style={{ color: C.accent, fontSize: 26, fontWeight: 800, marginBottom: 6 }}>
               Λ = {(runResult.lambda_value ?? runResult.lambda_irma_2017)?.toFixed(4) ?? '—'}
             </div>
-            <div style={{ color: (runResult.lambda_value ?? runResult.lambda_irma_2017) > 1 ? C.err : C.ok, fontSize: 12, fontWeight: 700, marginBottom: 10 }}>
-              {(runResult.lambda_value ?? runResult.lambda_irma_2017) > 1 ? 'FLOODING' : 'RADIATIVE'}
-            </div>
+            {(() => {
+              const lv = runResult.lambda_value ?? runResult.lambda_irma_2017 ?? 0
+              const isFlooding = lv >= 1.0
+              const badgeColor = isFlooding ? '#a855f7' : C.ok
+              return (
+                <div style={{ display: 'inline-flex', alignItems: 'center', background: badgeColor + '22', border: `2px solid ${badgeColor}`, borderRadius: 6, padding: '5px 14px', marginBottom: 12 }}>
+                  <span style={{ color: badgeColor, fontSize: 13, fontWeight: 800, letterSpacing: '0.07em' }}>
+                    {isFlooding ? 'FLOODING' : 'RADIATIVE'}
+                  </span>
+                </div>
+              )
+            })()}
             {[
               ['Surge Index', runResult.surge_index?.toFixed(3)],
               ['Surge Regime', runResult.surge_regime],
@@ -853,7 +864,7 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', tier 
               ['CSI',         cur.csi.toFixed(3),          cur.csi > 0.35 ? C.ok : '#e2e8f0'],
               ['POD',         cur.pod.toFixed(3),          cur.pod > 0.55 ? C.ok : '#e2e8f0'],
               ['FAR',         cur.far.toFixed(3),          cur.far < 0.55 ? C.ok : C.warn],
-              ['Λ mean',      cur.lambdaMean.toFixed(4),   cur.lambdaMean > 0.15 ? C.warn : '#e2e8f0'],
+              ['Λ mean',      cur.lambdaMean.toFixed(4),   cur.lambdaMean >= 1.0 ? '#a855f7' : cur.lambdaMean >= 0.7 ? C.err : cur.lambdaMean >= 0.3 ? C.warn : '#e2e8f0'],
               ['Soil',        `${soilSat.label} ${cur.soilPerm.toFixed(3)}`, soilSat.color],
               ['Stage (ft)',  cur.stage.toFixed(2),        cur.stage > 7 ? C.err : cur.stage > 4 ? C.warn : '#e2e8f0'],
               ['Precip (mm)', cur.precip.toFixed(1),       '#e2e8f0'],
@@ -921,12 +932,14 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', tier 
             <div style={{ color: C.accent, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 10 }}>ABOUT THIS METRIC</div>
             <div style={{ color: '#e2e8f0', fontSize: 15, fontWeight: 700, marginBottom: 14 }}>Jackson Lambda Model (JLM Λ)</div>
             <div style={{ color: '#94a3b8', fontSize: 13, lineHeight: 1.75, marginBottom: 20 }}>
-              Jackson Lambda Model (JLM Λ) — a proprietary physics-based flood index developed by Photonic Dynamics. Validated against 44 USGS high-water marks from Hurricane Matthew 2016, achieving a 63% improvement over baseline. Values above 0.15 indicate high inundation risk.
+              Jackson Lambda Model (JLM Λ) — a proprietary physics-based flood index developed by Photonic Dynamics. Validated against 65 USGS high-water marks across 5 NE Florida counties (CSI = 0.5213). Λ ≥ 1.0 crosses the flooding threshold. Values 0.7–1.0 indicate high radiative stress approaching that boundary.
             </div>
             <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 16 }}>
               {[
                 ['Formula',    'Λ = (elev_grad × precip_rate) / (soil_perm × channel_width)'],
-                ['High Risk',  'Λ > 0.15 — high inundation risk'],
+                ['FLOODING',   'Λ ≥ 1.0 — inundation threshold crossed'],
+                ['High',       'Λ 0.7–1.0 — high stress, approaching threshold'],
+                ['Moderate',   'Λ 0.3–0.7 — elevated drainage pressure'],
                 ['Flooding',   'Λ ≥ 1.0 — active flood conditions'],
                 ['Validation', 'CSI 0.380 · Hurricane Matthew 2016 · 44 USGS HWMs'],
               ].map(([k, v]) => (
@@ -1029,7 +1042,7 @@ export default function MapDashboard({ apiKey: apiKeyProp = 'sg_ent_demo', tier 
                   <span style={{ color: C.accent, fontWeight: 700 }}>JLM Λ</span>
                   <button onClick={() => setShowJlmInfo(true)} style={{ background: 'transparent', border: 'none', color: C.accent, cursor: 'pointer', padding: 0, fontSize: 13, lineHeight: 1, opacity: 0.85, minHeight: 'auto' }} title="About JLM Λ">ⓘ</button>
                 </div>
-                {[['< 0.05  Low', 'rgba(0,210,80,0.85)'], ['0.05–0.15  Medium', 'rgba(255,165,0,0.85)'], ['> 0.15  High', 'rgba(255,40,0,0.85)']].map(([l, c]) => (
+                {[['< 0.3  Low', 'rgba(0,210,80,0.85)'], ['0.3–0.7  Moderate', 'rgba(255,140,0,0.85)'], ['0.7–1.0  High', 'rgba(255,30,0,0.85)'], ['≥ 1.0  FLOODING', 'rgba(180,0,200,0.85)']].map(([l, c]) => (
                   <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
                     <div style={{ width: 12, height: 8, background: c, borderRadius: 2, flexShrink: 0 }} />
                     <span style={{ color: '#cbd5e1' }}>{l}</span>

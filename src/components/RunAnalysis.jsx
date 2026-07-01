@@ -55,9 +55,10 @@ const IRMA_STEPS = [
 ]
 
 function lambdaToRgba(lambda) {
-  const v = Math.min(1, lambda / 0.5)
-  if (v < 0.5) { const t = v / 0.5; return [Math.round(t * 255), 200, 0, 175] }
-  const t = (v - 0.5) / 0.5; return [255, Math.round((1 - t) * 200), 0, 175]
+  if (lambda < 0.3)      { return [0, 210, 80, 175] }
+  if (lambda < 0.7)      { const t = (lambda - 0.3) / 0.4; return [Math.round(255 * t), Math.round(200 - 160 * t), 0, 175] }
+  if (lambda < 1.0)      { return [255, Math.round(50 * (1 - (lambda - 0.7) / 0.3)), 0, 175] }
+  return [180, 0, 200, 185]
 }
 
 function buildGrid(lambdaMean) {
@@ -85,6 +86,12 @@ export default function RunAnalysis() {
   const [runResult, setRunResult] = useState(null)
   const [isRunning, setIsRunning] = useState(false)
   const [apiKey, setApiKey] = useState('sg_ent_demo')
+  const [aiSummary, setAiSummary] = useState(null)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState(null)
+  const [aiOpen, setAiOpen] = useState(true)
+  const [aiQuestion, setAiQuestion] = useState('')
+  const [aiAnswer, setAiAnswer] = useState(null)
   const [location, setLocation] = useState('jacksonville')
   const [locations, setLocations] = useState([])
 
@@ -165,8 +172,35 @@ export default function RunAnalysis() {
     if (showFema) setShowFema(false)
   }, [mapLoaded, runResult])
 
+  async function fetchAiSummary(runId, regenerate = false, question = null) {
+    setAiLoading(true); setAiError(null)
+    try {
+      const body = { run_id: runId }
+      if (regenerate) body.regenerate = true
+      if (question)   body.question   = question
+      const res  = await fetch(`${API}/api/agent/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (data.error && !data.summary) {
+        setAiError('AI summary temporarily unavailable')
+      } else if (question) {
+        setAiAnswer(data.answer || data.summary || 'No answer returned.')
+      } else {
+        setAiSummary(data)
+      }
+    } catch {
+      setAiError('AI summary temporarily unavailable')
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
   async function handleRun() {
     setIsRunning(true); setRunResult(null); setRunStatus('queued')
+    setAiSummary(null); setAiError(null); setAiAnswer(null); setAiOpen(true)
     try {
       const res = await fetch(`${API}/run`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey }, body: JSON.stringify({ location, start_date: startDate, end_date: endDate }) })
       const data = await res.json()
@@ -180,7 +214,9 @@ export default function RunAnalysis() {
           clearInterval(poll); setIsRunning(false)
           if (sd.status === 'complete') {
             const out = await fetch(`${API}/outputs/${data.run_id}`, { headers: { 'X-API-Key': apiKey } })
-            setRunResult(await out.json())
+            const od = await out.json()
+            setRunResult(od)
+            fetchAiSummary(data.run_id)
           }
         }
       }, 4000)
@@ -217,7 +253,7 @@ export default function RunAnalysis() {
             ) : (
               <>
                 <div style={{ color: C.accent, fontWeight: 700, marginBottom: 4 }}>JLM Λ</div>
-                {[['Low (< 0.05)', 'rgba(0,200,0,0.7)'], ['Medium (0.05–0.25)', 'rgba(255,200,0,0.7)'], ['High (> 0.25)', 'rgba(255,40,0,0.7)']].map(([l, c]) => (
+                {[['Low (< 0.3)', 'rgba(0,210,80,0.7)'], ['Moderate (0.3–0.7)', 'rgba(255,140,0,0.7)'], ['High (0.7–1.0)', 'rgba(255,30,0,0.7)'], ['FLOODING (≥ 1.0)', 'rgba(180,0,200,0.7)']].map(([l, c]) => (
                   <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
                     <div style={{ width: 12, height: 8, background: c, borderRadius: 2 }} />
                     <span style={{ color: '#cbd5e1' }}>{l}</span>
@@ -350,13 +386,120 @@ export default function RunAnalysis() {
 
         {runResult && (
           <div style={{ background: C.card, border: `1px solid ${C.ok}44`, borderRadius: 8, padding: 16 }}>
-            <div style={{ color: C.ok, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 12 }}>RESULT</div>
-            {[['Lambda', runResult.lambda_value?.toFixed(4)], ['Surge Index', runResult.surge_index?.toFixed(3)], ['FEMA High Risk', runResult.fema_high_risk ? 'Yes' : 'No'], ['Regime', runResult.surge_regime]].map(([k, v]) => v !== undefined && (
-              <div key={k} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: 11 }}>
+            <div style={{ color: C.ok, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 10 }}>RESULT</div>
+            <div style={{ color: C.accent, fontSize: 24, fontWeight: 800, marginBottom: 6 }}>
+              Λ = {runResult.lambda_value?.toFixed(4) ?? '—'}
+            </div>
+            {(() => {
+              const lv = runResult.lambda_value ?? 0
+              const isFlooding = lv >= 1.0
+              const badgeColor = isFlooding ? '#a855f7' : C.ok
+              return (
+                <div style={{ display: 'inline-flex', alignItems: 'center', background: badgeColor + '22', border: `2px solid ${badgeColor}`, borderRadius: 6, padding: '5px 14px', marginBottom: 12 }}>
+                  <span style={{ color: badgeColor, fontSize: 13, fontWeight: 800, letterSpacing: '0.07em' }}>
+                    {isFlooding ? 'FLOODING' : 'RADIATIVE'}
+                  </span>
+                </div>
+              )
+            })()}
+            {[
+              ['Surge Index',    runResult.surge_index?.toFixed(3)],
+              ['Surge Regime',   runResult.surge_regime],
+              ['FEMA High Risk', runResult.fema_high_risk != null ? (runResult.fema_high_risk ? 'YES' : 'NO') : null],
+            ].filter(([, v]) => v != null).map(([k, v]) => (
+              <div key={k} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, fontSize: 11 }}>
                 <span style={{ color: C.muted }}>{k}</span>
-                <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{v ?? '—'}</span>
+                <span style={{ color: '#e2e8f0', fontWeight: 600 }}>{v}</span>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* AI Summary card */}
+        {runResult && (
+          <div style={{ background: C.card, border: '1px solid #06b6d422', borderRadius: 8, overflow: 'hidden' }}>
+            <button
+              onClick={() => setAiOpen(o => !o)}
+              style={{ width: '100%', background: 'transparent', border: 'none', padding: '10px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ color: C.accent, fontSize: 10, fontWeight: 700, letterSpacing: '0.1em' }}>AI SUMMARY</span>
+                <span style={{ background: '#a78bfa22', color: '#a78bfa', border: '1px solid #a78bfa44', borderRadius: 3, fontSize: 9, fontWeight: 700, padding: '1px 6px', letterSpacing: '0.05em' }}>Claude</span>
+              </div>
+              <span style={{ color: C.muted, fontSize: 11 }}>{aiOpen ? '▲' : '▼'}</span>
+            </button>
+
+            {aiOpen && (
+              <div style={{ padding: '0 16px 14px' }}>
+                {aiLoading && (
+                  <div style={{ color: C.muted, fontSize: 11, textAlign: 'center', padding: '12px 0', opacity: 0.7 }}>
+                    Analyzing with Claude…
+                  </div>
+                )}
+                {aiError && !aiLoading && (
+                  <div style={{ color: C.warn, fontSize: 11, lineHeight: 1.6 }}>{aiError}</div>
+                )}
+                {aiSummary && !aiLoading && (
+                  <>
+                    <div style={{ color: '#e2e8f0', fontSize: 12, lineHeight: 1.75, marginBottom: 10 }}>{aiSummary.summary}</div>
+
+                    {aiSummary.pe_implications && (
+                      <div style={{ borderTop: '1px solid #1e3a5f', paddingTop: 10, marginBottom: 10 }}>
+                        <div style={{ color: C.accent, fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 5 }}>PE IMPLICATIONS</div>
+                        <div style={{ color: '#cbd5e1', fontSize: 11, lineHeight: 1.65 }}>{aiSummary.pe_implications}</div>
+                      </div>
+                    )}
+
+                    {aiSummary.hec18_narration && (
+                      <div style={{ borderTop: '1px solid #1e3a5f', paddingTop: 10, marginBottom: 10 }}>
+                        <div style={{ color: C.accent, fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 5 }}>HEC-18 CONTEXT</div>
+                        <div style={{ color: '#cbd5e1', fontSize: 11, lineHeight: 1.65 }}>{aiSummary.hec18_narration}</div>
+                      </div>
+                    )}
+
+                    {aiSummary.confidence_caveat && (
+                      <div style={{ color: C.muted, fontSize: 10, lineHeight: 1.55, fontStyle: 'italic', marginBottom: 10 }}>{aiSummary.confidence_caveat}</div>
+                    )}
+
+                    <button
+                      onClick={() => fetchAiSummary(runId, true)}
+                      style={{ background: 'transparent', border: '1px solid #1e3a5f', borderRadius: 4, color: C.muted, padding: '5px 10px', fontSize: 10, cursor: 'pointer', marginBottom: runResult?.tier !== 'professional' ? 10 : 0 }}
+                    >
+                      Regenerate
+                    </button>
+
+                    {runResult?.tier !== 'professional' && (
+                      <div style={{ borderTop: '1px solid #1e3a5f', paddingTop: 10 }}>
+                        <div style={{ color: C.accent, fontSize: 9, fontWeight: 700, letterSpacing: '0.1em', marginBottom: 6 }}>ASK A FOLLOW-UP</div>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <input
+                            value={aiQuestion}
+                            onChange={e => setAiQuestion(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter' && aiQuestion.trim()) {
+                                fetchAiSummary(runId, false, aiQuestion)
+                                setAiQuestion('')
+                              }
+                            }}
+                            placeholder="Ask about this run…"
+                            style={{ flex: 1, background: '#0a1628', border: '1px solid #1e3a5f', borderRadius: 4, color: '#e2e8f0', padding: '6px 8px', fontSize: 11, outline: 'none' }}
+                          />
+                          <button
+                            onClick={() => { if (aiQuestion.trim()) { fetchAiSummary(runId, false, aiQuestion); setAiQuestion('') } }}
+                            style={{ background: C.accent, border: 'none', borderRadius: 4, color: '#0a1628', padding: '6px 10px', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                          >
+                            Ask
+                          </button>
+                        </div>
+                        {aiAnswer && (
+                          <div style={{ marginTop: 10, color: '#cbd5e1', fontSize: 11, lineHeight: 1.65, borderLeft: '2px solid #06b6d444', paddingLeft: 10, paddingTop: 4, paddingBottom: 4 }}>{aiAnswer}</div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
           </div>
         )}
 
